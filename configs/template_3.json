@@ -1,0 +1,76 @@
+{
+  "WORKFLOWS": [],
+  "POSTPROCESSING": [],
+  "BINS": ["FASTQ","GENOMES","snakes/scripts"],
+  "MAXTHREADS": [],
+  "GENOME": {},
+
+  "MAPPING": {
+    "ENV": "star",
+    "BIN": "STAR",
+    "ANNOTATION": [],
+    "OPTIONS": [{
+        "--sjdbGTFfeatureExon": "exon",
+        "--sjdbGTFtagExonParentTranscript": "Parent",
+        "--genomeSAindexNbases": "13"
+      },
+      {
+        "--sjdbGTFfeatureExon": "exon",
+        "--sjdbGTFtagExonParentTranscript": "Parent",
+        "--outSAMprimaryFlag AllBestScore": ""
+      },
+      "std"
+    ]
+  },
+
+  "COUNTING": {
+    "valid":{
+      "FEATURES": {
+        "exon": "Parent",
+        "gene": "ID"
+      },
+    },
+    "ENV": "countreads",
+    "BIN": "featureCounts",
+    "ANNOTATION": [],
+    "OPTIONS": [{
+      "-f": "",
+      "--fraction": "",
+      "-p": "",
+      "-O": "",
+      "-M": ""
+    }]
+  },
+
+  "DAS": {
+    "valid":{
+      "TOOLS": {
+        "edger": "Analysis/DAS/EDGER.R",
+        "diego": "Analysis/DAS/DIEGO.py"
+      },
+      "COMPARABLE": {
+        "contrast_special": [
+          [],
+          []
+        ]
+      },
+    },
+    "ANNOTATION": [],
+    "RELATIONS": [],
+    "OPTIONS": [{
+        "-t": "exon",
+        "-g": "gene_id",
+        "-f": "",
+        "--fraction": "",
+        "-O": ""
+      },
+      {
+        "-c": "10",
+        "-d": "3",
+        "-q": "0.01",
+        "-z": "1.0",
+        "-r": "",
+      }
+    ]
+  }
+}

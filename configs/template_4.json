@@ -1,0 +1,179 @@
+{
+  "WORKFLOWS": [],
+  "POSTPROCESSING": [],
+  "BINS": ["FASTQ","GENOMES","snakes/scripts"],
+  "MAXTHREADS": [],
+  "GENOME": {},
+  "SEQUENCING": {},
+  "RAW": {
+    "ENV": "sra",
+    "OPTIONS": []
+  },
+
+  "QC": {
+    "ENV": "fastqc",
+    "BIN": "fastqc",
+    "OPTIONS": []
+  },
+
+  "TRIMMING": {
+    "ENV": "trimgalore",
+    "BIN": "trim_galore",
+    "OPTIONS": [{
+      "-q": "15",
+      "--length": "8",
+      "-e": "0.15"
+    }]
+  },
+
+  "MAPPING": {
+    "ENV": "star",
+    "BIN": "STAR",
+    "ANNOTATION": [],
+    "OPTIONS": [{
+        "--sjdbGTFfeatureExon": "exon",
+        "--sjdbGTFtagExonParentTranscript": "Parent",
+        "--genomeSAindexNbases": "13"
+      },
+      {
+        "--sjdbGTFfeatureExon": "exon",
+        "--sjdbGTFtagExonParentTranscript": "Parent",
+        "--outSAMprimaryFlag AllBestScore": ""
+      },
+      "std"
+    ]
+  },
+
+  "COUNTING": {
+    "valid":{
+      "FEATURES": {
+        "exon": "Parent",
+        "gene": "ID"
+      },
+    },
+    "ENV": "countreads",
+    "BIN": "featureCounts",
+    "ANNOTATION": [],
+    "OPTIONS": [{
+      "-f": "",
+      "--fraction": "",
+      "-p": "",
+      "-O": "",
+      "-M": ""
+    }]
+  },
+
+  "ANNOTATE": {
+    "ENV": "annotatebed",
+    "BIN": "annotate",
+    "ANNOTATION": [],
+    "ANNOFEATURE": "gene",
+    "OPTIONS": [{
+      "-w": "ON"
+    }]
+  },
+
+  "UCSC": {
+    "ENV": "ucsc",
+    "OPTIONS": [{
+      "-n": "DM6_unpaired_Mapping",
+      "-s": "dm6_st",
+      "-l": "UCSC_DM6_unpaired_Mapping",
+      "-b": "UCSC_dm6_star"
+    }]
+  },
+
+  "PEAKS": {
+    "ENV": "peaks",
+    "ANNOTATION": [],
+    "CLIP": "iCLIP",
+    "OPTIONS": [{
+      "MINPEAKRATIO": "0.6",
+      "PEAKDISTANCE": "1",
+      "PEAKWIDTH": "5",
+      "PEAKCUTOFF": "0.8",
+      "MINPEAKHEIGHT": "3",
+      "USRLIMIT": "3"
+    }]
+  },
+
+  "DE": {
+    "valid":{
+      "TOOLS": {
+        "deseq2": "Analysis/DE/DESEQ2.R",
+        "edger": "Analysis/DE/EDGER.R"
+      },
+      "COMPARABLE": {
+        "contrast_special": [
+          [],
+          []
+        ]
+      },
+    },
+    "ANNOTATION": [],
+    "RELATIONS": [],
+    "OPTIONS": [{
+      "-t": "gene",
+      "-g": "gene_id",
+      "-f": "",
+      "--fraction": "",
+      "-O": ""
+    }]
+  },
+
+  "DEU": {
+    "valid":{
+      "TOOLS": {
+        "dexseq": "Analysis/DEU/DEXSEQ.R",
+        "edger": "Analysis/DEU/EDGER.R"
+      },
+      "COMPARABLE": {
+        "contrast_special": [
+          [],
+          []
+        ]
+      },
+    },
+    "ANNOTATION": [],
+    "RELATIONS": [],
+    "OPTIONS": [{
+      "-t": "exon",
+      "-g": "gene_id",
+      "-f": "",
+      "--fraction": "",
+      "-O": ""
+    }]
+  },
+
+  "DAS": {
+    "valid":{
+      "TOOLS": {
+        "edger": "Analysis/DAS/EDGER.R",
+        "diego": "Analysis/DAS/DIEGO.py"
+      },
+      "COMPARABLE": {
+        "contrast_special": [
+          [],
+          []
+        ]
+      },
+    },
+    "ANNOTATION": [],
+    "RELATIONS": [],
+    "OPTIONS": [{
+        "-t": "exon",
+        "-g": "gene_id",
+        "-f": "",
+        "--fraction": "",
+        "-O": ""
+      },
+      {
+        "-c": "10",
+        "-d": "3",
+        "-q": "0.01",
+        "-z": "1.0",
+        "-r": "",
+      }
+    ]
+  }
+}

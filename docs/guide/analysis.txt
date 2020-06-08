@@ -1,4 +1,4 @@
-Okay, now we reach the analysis WORKFLOWS. Here is another important detail that
+Okay, now we reach the ANALYSIS workflwos. Here is another important detail that
 you have to take into account. For DE, DEU and DAS you have to determine
 COMPARISON GROUPS and you can choose different analysis TOOLS.
 
