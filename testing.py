@@ -41,18 +41,21 @@ class NestedDefaultDict(defaultdict):
     def merge(self, *args):
         self = merge_dicts(self,*args)
 
-    def rec_equip(self, ics):
+    def rec_equip(self, ics ,key):
         if len(ics)==1:
-            self[ics[0]] = []
+            self[ics[0]] = template[key]
+            self[ics[0]].pop("valid", None)
             return
-        self[ics[0]].rec_equip(ics[1:])
+        self[ics[0]].rec_equip(ics[1:],key)
 
     def equip(self, config, conditions):
         for k,v in config.items():
             if isinstance(v, dict):
+                if "valid" in config[k].keys():
+                    self[k]["valid"]=config[k]["valid"]
                 for c in conditions:
                     ics=c.split(':')
-                    self[k].rec_equip(ics)
+                    self[k].rec_equip(ics, k)
             else:
                 self[k]=""
 
@@ -65,31 +68,21 @@ class NestedDefaultDict(defaultdict):
                 yield from v.get_condition_list(keylist)
             keylist.pop()
 
-    def rec_walk(self,anno,opts,breaklevel=None):
-        if breaklevel == None:
-            for k,v in self.items():
-                if isinstance(v, dict):
-                    v.rec_walk(anno,opts,None)
-                else:
-                    self[k]=opts
-            return
+
+    def rec_walk(self,toset,opts,breaklevel,end=False):
         if breaklevel == 0:
-            print_dict(self)
-            opts = input(">>> ")
             for k,v in self.items():
-                if isinstance(v, dict):
-                    v.rec_walk(None,anno,opts)
+                if not v or isinstance(v.keys(), NestedDefaultDict):
+                    self[k][toset]=opts
                 else:
-                    self[k]=opts
+                    v.rec_walk(toset,opts,0)
             return
+
         for k,v in self.items():
-            if isinstance(v, dict):
-                bl = breaklevel-1
-                v.rec_walk(bl,anno,opts)
-            if v==[]:
-                opts = input(">>> ")
-                self[k]=opts
-        return
+            if isinstance(v, NestedDefaultDict):
+                bl = int(breaklevel)-1
+                v.rec_walk(toset,opts,bl)
+
 
     def walk(self,template,breaklevel=0):
         for key,value in self.items():
@@ -158,6 +151,7 @@ def conversation(question, origin, proof=None):
 
 WORKFLOWS=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""]
 POSTPROCESSING=["DE","DEU","DAS",""]
+
 template = load_configfile('configs/template_3.json')
 
 config_dict=NestedDefaultDict()
@@ -171,24 +165,23 @@ condition_dict['b']['1']
 condition_dict['b']['2']
 condition_dict['b']['3']
 
-
 conditions=[pattern for pattern in condition_dict.get_condition_list()]
 config_dict.equip(template,conditions)
-
-config_dict['MAXTHREADS'] = "10"
-config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
 print_dict(config_dict)
+#
+# config_dict['MAXTHREADS'] = "10"
+# config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
+# print_dict(config_dict)
+# print_dict(template)
 
-for workflow in WORKFLOWS:
-    breaklevel=conversation("which level?",None)
-    config_dict[workflow].rec_walk(breaklevel,opts)
 
-for key,value in config_dict.items():
-    if any(key == x for x in WORKFLOWS):
-        if isinstance(value, dict):
-            # anno = copy.deepcopy(template[value]['ANNOTATION'])
-            opts = copy.deepcopy(template[value]['OPTIONS'])
-            value.rec_walk(breaklevel,anno,opts)
+# for key,value in config_dict.items():
+#     if any(key == x for x in WORKFLOWS):
+#         for toset in ['OPTIONS', 'ANNOTATION']:
+#             if toset in template[key].keys():
+#                 breaklevel=conversation("which level?",None)
+#                 opts = copy.deepcopy(template[key][toset])
+#                 value.rec_walk(toset,opts,breaklevel)
 
-    if any(key == x for x in POSTPROCESSING):
-        print()
+    # if any(key == x for x in POSTPROCESSING):
+    #     print()
