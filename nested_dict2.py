@@ -1,24 +1,19 @@
-from collections import defaultdict
 from collections import OrderedDict
-import collections
-import json
-import sys
-import copy
-import pprint
-from snakemake import load_configfile
-import glob, os, sys, inspect, json, shutil
 from collections import defaultdict, deque
+import collections
+import pprint
+import glob, os, sys, inspect, json, shutil
 import traceback as tb
 from snakemake import load_configfile
 from snakemake.utils import validate, min_version
 import argparse
 import subprocess
 import re
-import sys
 import copy
-import json
 import random
 import logging
+
+
 
 def print_dict(dict, indent=4):
     print(json.dumps(dict, indent=indent))
@@ -58,39 +53,38 @@ class NestedDefaultDict(defaultdict):
                 yield from v.get_condition_list(keylist)
             keylist.pop()
 
+    def rec_walk(self,anno,opts,breaklevel=None):
+        if breaklevel == None:
+            for k,v in self.items():
+                if isinstance(v, dict):
+                    v.rec_walk(anno,opts,None)
+                else:
+                    self[k]=opts
+            return
+        if breaklevel == 0:
+            print_dict(self)
+            opts = input(">>> ")
+            for k,v in self.items():
+                if isinstance(v, dict):
+                    v.rec_walk(None,anno,opts)
+                else:
+                    self[k]=opts
+            return
+        for k,v in self.items():
+            if isinstance(v, dict):
+                bl = breaklevel-1
+                v.rec_walk(bl,anno,opts)
+            if v==[]:
+                opts = input(">>> ")
+                self[k]=opts
+        return
 
-    # def rec_walk(self, breaklevel=None,anno,opts):
-    #     if breaklevel == None:
-    #         for k,v in self.items():
-    #             if isinstance(v, dict):
-    #                 v.rec_walk(None,anno,opts)
-    #             else:
-    #                 self[k]=opts
-    #         return
-    #     if breaklevel == 0:
-    #         print_dict(self)
-    #         opts = input(">>> ")
-    #         for k,v in self.items():
-    #             if isinstance(v, dict):
-    #                 v.rec_walk(None,anno,opts)
-    #             else:
-    #                 self[k]=opts
-    #         return
-    #     for k,v in self.items():
-    #         if isinstance(v, dict):
-    #             bl = breaklevel-1
-    #             v.rec_walk(bl,anno,opts)
-    #         if v==[]:
-    #             opts = input(">>> ")
-    #             self[k]=opts
-    #     return
-    #
-    # def walk(self, breaklevel=0,template):
-    #     for key,value in self.items():
-    #         if isinstance(value, dict):
-    #             # anno = copy.deepcopy(template[value]['ANNOTATION'])
-    #             opts = copy.deepcopy(template[value]['OPTIONS'])
-    #             value.rec_walk(breaklevel,anno,opts)
+    def walk(self,template,breaklevel=0):
+        for key,value in self.items():
+            if isinstance(value, dict):
+                # anno = copy.deepcopy(template[value]['ANNOTATION'])
+                opts = copy.deepcopy(template[value]['OPTIONS'])
+                value.rec_walk(breaklevel,anno,opts)
 
 
 
@@ -190,20 +184,43 @@ def conversation(question, origin, proof=None):
                             default.update({name:value})
                     return default
 
-def print_dict_pointer(dict,path,indent=6):
+def clear(number):
+    os.system(f'echo -e "\e[{number}A\033[2K"')
+    for i in range(number-1):
+        os.system(f'echo -e "\e[-1A\033[2K"')
+    os.system(f'echo -e "\e[{number}A\03\c"')
+
+def print_dict(dict, indent=6):
+    print(json.dumps(dict, indent=indent))
+
+def print_dict_pointer(dict,path,copy,more,indent=6):
     out=json.dumps(dict, indent=indent)
-    print(path)
+    clear(len(out.split('\n'))-more)
+    # print('path: ',path)
+    route=['step']+path.copy()
+    stepper=1
     for line in out.split('\n'):
-        if path[0] in line:
-            if len(path)==1:
-                print(line,"\t<== enter ID's here")
+        level = int(((len(line) - len(line.lstrip(' ')))-indent)/indent)
+        key = line.replace('"','').replace('{','').replace('}','').replace(':','').replace(',','').strip()
+        if level+1 >= len(route):
+            print(line)
+        elif not key:
+            print(line)
+        elif route[level+1] == key and route[level] == 'step':
+            route[stepper] = 'step'
+            stepper+=1
+            if len(route) == level+2:
+                if route[level-1] == 'step':
+                    if copy and copy != ['']:
+                        print(line, f"\t>> enter new ID's here <<   or copy {copy} with 'cp' ")
+                    else:
+                        print(line, f"\t>> enter new ID's here <<")
             else:
-                path=path[1:]
                 print(line)
         else:
             print(line)
 
-def equip_condition_dict(subtree,leafes,path=[],tree=None):
+def create_condition_dict(subtree,leafes,path=[],tree=None):
     if tree==None:
         tree=subtree
     if not leafes[0]:
@@ -211,122 +228,169 @@ def equip_condition_dict(subtree,leafes,path=[],tree=None):
         return
     for leaf in leafes:
         subtree[leaf]
+    copy=[]
     for k,v in subtree.items():
         path.append(k)
-        print_dict_pointer(tree, path)
+        if tree==subtree:
+            print("\n")
+        if not leafes[0]:
+            print_dict_pointer(tree, path, copy,-1)
+        else:
+            print_dict_pointer(tree, path, copy,len(leafes))
         leafes=input(">>> ").split(',')
-        rec_ics_display(subtree[k],leafes,path,tree)
+        if leafes==["cp"]:
+            leafes=copy
+        create_condition_dict(subtree[k],leafes,path,tree)
+        copy=leafes
+        leafes=['']
     if len(path)>0:
         path.pop()
     return
 
 
-pp = pprint.PrettyPrinter(indent=4)
+if __name__ == '__main__':
+
+    # makelogdir('LOGS')
+    # logid = scriptname+'.main: '
+    # log = setup_logger(name=scriptname, log_file='LOGS/'+scriptname+'.log', logformat='%(asctime)s %(levelname)-8s %(name)-12s %(message)s', datefmt='%m-%d %H:%M', level=knownargs.loglevel)
+    # log.addHandler(logging.StreamHandler(sys.stderr))  # streamlog
+
+    MIN_PYTHON = (3,7)
+    if sys.version_info < MIN_PYTHON:
+        log.error("This script requires Python version >= 3.7")
+        sys.exit("This script requires Python version >= 3.7")
+    # log.info(logid+'Running '+scriptname+' on '+str(knownargs.procs)+' cores')
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    cwd=os.getcwd()
+
+    print("\n\n\n","*"*33," NextSnakes GUIDE ","*"* 33,)
+    print("","*"*86,"\n")
+
+    try:
+        # args=parseargs()
+        # if args.quickmode:
+        #     quick=True
+        #     print("  > starting in quick-mode <\n")
+        # else:
+        #     quick=False
+        #     print("  > starting in explanation-mode <\n")
+
+        pp = pprint.PrettyPrinter(indent=4)
+
+        template = load_configfile('configs/template_3.json')
+        condition_dict = NestedDefaultDict()
+        config_dict = NestedDefaultDict()
+        WORKFLOWS=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""]
+        POSTPROCESSING=["DE","DEU","DAS",""]
+
+        explain("intro.txt")
+        start = conversation("Enter 'append' for expanding an existing configfile or 'new' for a new project",None)
+
+        while True:
+            if 'append' in start:
+                continue
+            if 'new' in start:
+
+                name = conversation("Now please type the name of your Project, it will be the name of the CONFIGFILE \nand possibly of your Project-folder", None)
+                configfile = f"config_{name}.json"
+
+                # folder_content = os.listdir('../')
+                # if 'FASTQ' in folder_content or 'GENOMES' in folder_content:
+                #     set_folder=conversation("It looks like you already set up your project-folder. We would therefor skip setting it up now. Enter 'n' if you want to do that anyway.", None)
+                # else:
+                #     explain('projectfolder.txt')
+                #     while True:
+                #         path_to_project = conversation("So, where should the Project-folder be created? Enter the absolute path \nlike '/home/path/to/NextSnakesProjects' ",None)
+                #         if os.path.isdir(path_to_project):
+                #             project = os.path.join(path_to_project,name)
+                #             if os.path.isdir(project):
+                #                 print(f"In the directory you entered, a folder with the name {name} already exist. \nMaybe you should think about what you really want to do. If you want to work on \nan existing Project, use the 'append' function, otherwise use a different \nProject-name. Ciao!")
+                #                 exit()
+                #             os.mkdir(project)
+                #             os.mkdir(os.path.join(project,"FASTQ"))
+                #             os.mkdir(os.path.join(project,"GENOMES"))
+                #             os.symlink(cwd, os.path.join(project,'snakes'))
+                #             break
+                #         else:
+                #             print("Sry, couldn't find this directory ")
+
+                explain("conditions.txt")
+                create_condition_dict(condition_dict,[name])
+                condition_dict=condition_dict.pop(name)
+                conditions=[pattern for pattern in condition_dict.get_condition_list()]
+
+                # print("Now you may have to be patient. We go through all settings, and you have to \n"
+                # "assign the corresponding samples by their absolute directory path. The Guide will \n"
+                # "symlink it to your 'FASTQ'-Folder.\n\n"
+                # "For that, maybe it's helpful to open another termimal, navigate to the directory \n"
+                # "your samples are stored and list them with 'readlink -f *.fastq.gz'\n")
+                #
+                # for condition in conditions:
+                #     while True:
+                #         sample=conversation(f"Enter one Sample-path of {condition} or enter 'n' to go to the next condition",None)
+                #         if sample=='n':
+                #             break
+                #         if os.path.isfile(sample):
+                #             try:
+                #                 os.symlink(sample, os.path.join(project,'FASTQ',condition.split(':')[0],condition.split(':')[1],condition.split(':')[2],os.path.basename(sample)))
+                #             except:
+                #                 print("hmm, an error occured.. maybe this file is already linked. try again!")
+                #         else:
+                #             print("Sry, couldn't find the file")
+
+                # explain("workflows.txt")
+                # workflows = conversation("Enter which WORKFLOWS you would like to run.", None, WORKFLOWS)
+                # postprocess = conversation("Which POSTPROCESS ANALYSIS would you like to run? Possible are DE, DEU, DAS", None, POSTPROCESSING)
+
+                config_dict.equip(template,conditions)
+
+                # explain("genomes1.txt")
+                # organisms = conversation("enter all organisms you have in your analysis",None)
+                # for organism in organisms.split(","):
+                #     os.mkdir(os.path.join(project,"GENOMES",organism))
+                #     basename=conversation(f"enter the basename(!) of the fa.gz file appending to {organism}", None)
+                #     config_dict['GENOME'].update({organism:basename})
+                #     print("Now you can add Genome reference files to your GENOMES folder\n")
+                #     while True:
+                #         file=conversation(f"Enter one file-path you want to symlink to {organism} or enter 'n' to go to the next ics",None)
+                #         if file=='n':
+                #             break
+                #         if os.path.isfile(file):
+                #             try:
+                #                 os.symlink(file, os.path.join(project,'GENOMES',organism,os.path.basename(file)))
+                #             except:
+                #                 print("hmm, an error occured.. maybe this file is already linked. try again!")
+                #         else:
+                #             print("Sry, couldn't find the file")
 
 
-template = load_configfile('configs/template_3.json')
-condition_dict = NestedDefaultDict()
-config_dict = NestedDefaultDict()
-WORKFLOWS=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""]
-POSTPROCESSING=["DE","DEU","DAS",""]
+                config_dict['MAXTHREADS'] = "10"
+                config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
+                print_dict(config_dict)
 
-explain("intro.txt")
-start = conversation("Enter 'append' for expanding an existing configfile or 'new' for a new project",None)
+                explain("workflows2.txt")
 
-while True:
-    if 'append' in start:
-        continue
-    if 'new' in start:
+                for workflow in WORKFLOWS:
+                    breaklevel=conversation("which level?",None)
+                    config_dict[workflow].rec_walk(breaklevel,opts)
 
-        name = conversation("Now please type the name of your Project, it will be the name of the CONFIGFILE \nand possibly of your Project-folder", None)
-        configfile = f"config_{name}.json"
+                for key,value in config_dict.items():
+                    if any(key == x for x in WORKFLOWS):
+                        if isinstance(value, dict):
+                            # anno = copy.deepcopy(template[value]['ANNOTATION'])
+                            opts = copy.deepcopy(template[value]['OPTIONS'])
+                            value.rec_walk(breaklevel,anno,opts)
 
-        folder_content = os.listdir('../')
-        if 'FASTQ' in folder_content or 'GENOMES' in folder_content:
-            set_folder=conversation("It looks like you already set up your project-folder. We would therefor skip setting it up now. Enter 'n' if you want to do that anyway.", None)
-        else:
-            explain('projectfolder.txt')
-            while True:
-                path_to_project = conversation("So, where should the Project-folder be created? Enter the absolute path \nlike '/home/path/to/NextSnakesProjects' ",None)
-                if os.path.isdir(path_to_project):
-                    project = os.path.join(path_to_project,name)
-                    if os.path.isdir(project):
-                        print(f"In the directory you entered, a folder with the name {name} already exist. \nMaybe you should think about what you really want to do. If you want to work on \nan existing Project, use the 'append' function, otherwise use a different \nProject-name. Ciao!")
-                        exit()
-                    os.mkdir(project)
-                    os.mkdir(os.path.join(project,"FASTQ"))
-                    os.mkdir(os.path.join(project,"GENOMES"))
-                    os.symlink(cwd, os.path.join(project,'snakes'))
-                    break
-                else:
-                    print("Sry, couldn't find this directory ")
+                    if any(key == x for x in POSTPROCESSING):
+                        print()
 
-        explain("conditions.txt")
-        equip_condition_dict(condition_dict,[name])
-        conditions=[pattern for pattern in condition_dict.get_condition_list()]
-
-        print("Now you may have to be patient. We go through all settings, and you have to \n"
-        "assign the corresponding samples by their absolute directory path. The Guide will \n"
-        "symlink it to your 'FASTQ'-Folder.\n\n"
-        "For that, maybe it's helpful to open another termimal, navigate to the directory \n"
-        "your samples are stored and list them with 'readlink -f *.fastq.gz'\n")
-
-        for condition in conditions:
-            while True:
-                sample=conversation(f"Enter one Sample-path of {condition} or enter 'n' to go to the next condition",None)
-                if sample=='n':
-                    break
-                if os.path.isfile(sample):
-                    try:
-                        os.symlink(sample, os.path.join(project,'FASTQ',condition.split(':')[0],condition.split(':')[1],condition.split(':')[2],os.path.basename(sample)))
-                    except:
-                        print("hmm, an error occured.. maybe this file is already linked. try again!")
-                else:
-                    print("Sry, couldn't find the file")
-
-        explain("workflows.txt")
-        workflows = conversation("Enter which WORKFLOWS you would like to run.", None, WORKFLOWS)
-        postprocess = conversation("Which POSTPROCESS ANALYSIS would you like to run? Possible are DE, DEU, DAS", None, POSTPROCESSING)
-
-        config_dict.equip(template,conditions)
-
-        explain("genomes1.txt")
-        organisms = conversation("enter all organisms you have in your analysis",None)
-        for organism in organisms.split(","):
-            os.mkdir(os.path.join(project,"GENOMES",organism))
-            basename=conversation(f"enter the basename(!) of the fa.gz file appending to {organism}", None)})
-            config_dict['GENOME'].update({organism:basename})
-            print("Now you can add Genome reference files to your GENOMES folder\n")
-            while True:
-                file=conversation(f"Enter one file-path you want to symlink to {organism} or enter 'n' to go to the next ics",None)
-                if file=='n':
-                    break
-                if os.path.isfile(file):
-                    try:
-                        os.symlink(file, os.path.join(project,'GENOMES',organism,os.path.basename(file)))
-                    except:
-                        print("hmm, an error occured.. maybe this file is already linked. try again!")
-                else:
-                    print("Sry, couldn't find the file")
-
-
-        config_dict['MAXTHREADS'] =
-        config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
-
-        explain("workflows2.txt")
-
-        for workflow in WORKFLWOS:
-            breaklevel=conversation("which level?",None)
-            config_dict[workflow].rec_walk(breaklevel,opts)
-
-        for key,value in config_dict.items():
-            if any(key == x for x in WORKFLOWS):
-                if isinstance(value, dict):
-                    # anno = copy.deepcopy(template[value]['ANNOTATION'])
-                    opts = copy.deepcopy(template[value]['OPTIONS'])
-                    value.rec_walk(breaklevel,anno,opts)
-
-            if any(key == x for x in POSTPROCESSING):
+    except Exception as err:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        tbe = tb.TracebackException(
+        exc_type, exc_value, exc_tb,
+        )
+        log.error(logid+''.join(tbe.format()))
 
 #
 #
