@@ -8,7 +8,7 @@
   "MAPPING": {
     "ENV": "star",
     "BIN": "STAR",
-    "ANNOTATION": [],
+    "ANNOTATION": "",
     "OPTIONS": [{
         "--sjdbGTFfeatureExon": "exon",
         "--sjdbGTFtagExonParentTranscript": "Parent",
@@ -32,7 +32,7 @@
     },
     "ENV": "countreads",
     "BIN": "featureCounts",
-    "ANNOTATION": [],
+    "ANNOTATION": "",
     "OPTIONS": [{
       "-f": "",
       "--fraction": "",
@@ -55,7 +55,7 @@
         ]
       },
     },
-    "ANNOTATION": [],
+    "ANNOTATION": "",
     "RELATIONS": [],
     "OPTIONS": [{
         "-t": "exon",

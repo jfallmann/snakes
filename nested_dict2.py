@@ -12,11 +12,18 @@ import re
 import copy
 import random
 import logging
+from itertools import cycle
+from testing import display
 
 
+def decouple(d):
+    string = json.dumps(d)
+    return json.loads(string)
 
-def print_dict(dict, indent=4):
-    print(json.dumps(dict, indent=indent))
+def depth(d):
+    if isinstance(d, dict):
+        return 1 + (max(map(depth, d.values())) if d else 0)
+    return 0
 
 
 class NestedDefaultDict(defaultdict):
@@ -29,18 +36,21 @@ class NestedDefaultDict(defaultdict):
     def merge(self, *args):
         self = merge_dicts(self,*args)
 
-    def rec_equip(self, ics):
+    def rec_equip(self, ics ,key):
         if len(ics)==1:
-            self[ics[0]] = []
+            self[ics[0]] = template[key]
+            self[ics[0]].pop("valid", None)
             return
-        self[ics[0]].rec_equip(ics[1:])
+        self[ics[0]].rec_equip(ics[1:],key)
 
     def equip(self, config, conditions):
         for k,v in config.items():
             if isinstance(v, dict):
+                if "valid" in config[k].keys():
+                    self[k]["valid"]=config[k]["valid"]
                 for c in conditions:
                     ics=c.split(':')
-                    self[k].rec_equip(ics)
+                    self[k].rec_equip(ics, k)
             else:
                 self[k]=""
 
@@ -85,7 +95,6 @@ class NestedDefaultDict(defaultdict):
                 # anno = copy.deepcopy(template[value]['ANNOTATION'])
                 opts = copy.deepcopy(template[value]['OPTIONS'])
                 value.rec_walk(breaklevel,anno,opts)
-
 
 
 
@@ -143,13 +152,15 @@ def conversation(question, origin, proof=None):
             if proof:
                 print("enter what should be added ")
             else:
-                print("enter what should be added or enter 'n' to continue ")
+                print("wanna change?  [ y / N ] ")
             a = proof_input(proof)
             print("\n")
-            if a == 'n':
-                print("fine, everything the same!")
+            if a=='n' or a == '' or a == 'N':
                 return default
-            else:
+            if a=='y':
+                print("okay, tell me your setting:")
+                a = proof_input()
+                print('\n')
                 return a
 
         if isinstance(default, dict):
@@ -160,16 +171,19 @@ def conversation(question, origin, proof=None):
                 print("\t> no entrys so far")
             print("\n")
             while True:
-                print("enter 'y' for yes or 'n' for no")
+                print("wanna change?  [ y / N ] ")
                 a = input(">>> ")
-                if a=='n':
+                print("\n")
+                if a=='n' or a == '' or a == 'N':
                     return default
                 if a=='y':
-                    print("okay, tell me your setting:")
                     if default:
                         for element in default:
-                            print(element+":")
+                            print("\t> ",element,": ")
+                            print('\n')
+                            print("okay, tell me your setting:")
                             a = proof_input()
+                            print('\n')
                             default[element]=a
                         return default
                     else:
@@ -247,6 +261,55 @@ def create_condition_dict(subtree,leafes,path=[],tree=None):
         path.pop()
     return
 
+def select_id_to_set(cdict,indent=6):
+    out=json.dumps(cdict, indent=indent)
+    d = depth(cdict)
+    switch = False
+    while True:
+        for i in range(d-2):
+            path=[]
+            setting_list=[]
+            if switch:
+                clear(len(out.split('\n'))+4)
+            switch=True
+            reminder=''
+            counter=0
+            for line in out.split('\n'):
+                level = int(((len(line) - len(line.lstrip(' ')))-indent)/indent)
+                key = line.replace('"','').replace('{','').replace('}','').replace(':','').replace(',','').strip()
+                if key:
+                    if len(path) > level:
+                        path=path[:-(len(path)-level)]
+                    path.append(key)
+                if level == i and ':' in line:
+                    if reminder != key:
+                        counter+=1
+                        reminder = key
+                        setting_list.append([])
+                elif level<i and '{}' in line:
+                    counter +=1
+                    setting_list.append([])
+                if '{}' in line:
+                    if ',' in line:
+                        print(line, f"{' '*(14-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}")
+                    else:
+                        print(line, f"{' '*(15-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}")
+                    setting_list[-1].append(path)
+                else:
+                    print(line)
+            a = conversation("enter for next Level or 'select' for set selected",None)
+            if a =='select':
+                return setting_list
+
+
+steps=[
+"add samples",
+"create Project-folder",
+"select Workflows",
+"set workflow options",
+""
+]
+
 
 if __name__ == '__main__':
 
@@ -267,7 +330,7 @@ if __name__ == '__main__':
     print("\n\n\n","*"*33," NextSnakes GUIDE ","*"* 33,)
     print("","*"*86,"\n")
 
-    try:
+    # try:
         # args=parseargs()
         # if args.quickmode:
         #     quick=True
@@ -276,24 +339,54 @@ if __name__ == '__main__':
         #     quick=False
         #     print("  > starting in explanation-mode <\n")
 
-        pp = pprint.PrettyPrinter(indent=4)
+        # pp = pprint.PrettyPrinter(indent=4)
 
-        template = load_configfile('configs/template_3.json')
-        condition_dict = NestedDefaultDict()
-        config_dict = NestedDefaultDict()
-        WORKFLOWS=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""]
-        POSTPROCESSING=["DE","DEU","DAS",""]
+    template = load_configfile('configs/template_3.json')
+    config_dict = NestedDefaultDict()
+    condition_dict = NestedDefaultDict()
 
-        explain("intro.txt")
-        start = conversation("Enter 'append' for expanding an existing configfile or 'new' for a new project",None)
+    # create_condition_dict(condition_dict,[name])
+    # condition_dict=condition_dict.pop(name)
 
-        while True:
-            if 'append' in start:
-                continue
-            if 'new' in start:
+    condition_dict['a']
+    condition_dict['b']
+    condition_dict['a']['1']['x']
+    condition_dict['a']['1']['y']
+    condition_dict['a']['1']['y']['m']
+    condition_dict['a']['1']['y']['numbers']
+    condition_dict['a']['1']
+    condition_dict['a']['2']
+    condition_dict['a']['3']
+    condition_dict['b']['1']
+    condition_dict['b']['2']
+    condition_dict['b']['2']['x']
+    condition_dict['b']['2']['y']
+    condition_dict['b']['3']
+    condition_dict['c']['1']
+    condition_dict['c']['2']
+    condition_dict['c']['3']
 
-                name = conversation("Now please type the name of your Project, it will be the name of the CONFIGFILE \nand possibly of your Project-folder", None)
-                configfile = f"config_{name}.json"
+    # WORKFLOWS=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""]
+    name = 'testdict'
+    WORKFLOWS=["MAPPING", "DAS"]
+    conditions=[pattern for pattern in condition_dict.get_condition_list()]
+    config_dict.equip(template,conditions)
+    config_dict = decouple(config_dict)
+    config_dict['MAXTHREADS'] = "10"
+    config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
+
+        # POSTPROCESSING=["DE","DEU","DAS",""]
+
+        # explain("intro.txt")
+        # start = conversation("Enter 'append' for expanding an existing configfile or 'new' for a new project",None)
+
+        # while True:
+        #     if 'append' in start:
+        #         continue
+        #     if 'new' in start:
+
+                # name = conversation("Now please type the name of your Project, it will be the name of the CONFIGFILE \nand possibly of your Project-folder", None)
+                # configfile = f"config_{name}.json"
 
                 # folder_content = os.listdir('../')
                 # if 'FASTQ' in folder_content or 'GENOMES' in folder_content:
@@ -315,10 +408,10 @@ if __name__ == '__main__':
                 #         else:
                 #             print("Sry, couldn't find this directory ")
 
-                explain("conditions.txt")
-                create_condition_dict(condition_dict,[name])
-                condition_dict=condition_dict.pop(name)
-                conditions=[pattern for pattern in condition_dict.get_condition_list()]
+                # explain("conditions.txt")
+                # create_condition_dict(condition_dict,[name])
+                # condition_dict=condition_dict.pop(name)
+                # conditions=[pattern for pattern in condition_dict.get_condition_list()]
 
                 # print("Now you may have to be patient. We go through all settings, and you have to \n"
                 # "assign the corresponding samples by their absolute directory path. The Guide will \n"
@@ -343,7 +436,8 @@ if __name__ == '__main__':
                 # workflows = conversation("Enter which WORKFLOWS you would like to run.", None, WORKFLOWS)
                 # postprocess = conversation("Which POSTPROCESS ANALYSIS would you like to run? Possible are DE, DEU, DAS", None, POSTPROCESSING)
 
-                config_dict.equip(template,conditions)
+    # config_dict.equip(template,conditions)
+    # config_dict = decouple(config_dict)
 
                 # explain("genomes1.txt")
                 # organisms = conversation("enter all organisms you have in your analysis",None)
@@ -365,32 +459,66 @@ if __name__ == '__main__':
                 #             print("Sry, couldn't find the file")
 
 
-                config_dict['MAXTHREADS'] = "10"
-                config_dict['BINS']=["FASTQ","GENOMES","snakes/scripts"]
-                print_dict(config_dict)
 
-                explain("workflows2.txt")
+    print_dict(config_dict)
+            # explain("workflows2.txt")
 
-                for workflow in WORKFLOWS:
-                    breaklevel=conversation("which level?",None)
-                    config_dict[workflow].rec_walk(breaklevel,opts)
 
-                for key,value in config_dict.items():
-                    if any(key == x for x in WORKFLOWS):
-                        if isinstance(value, dict):
-                            # anno = copy.deepcopy(template[value]['ANNOTATION'])
-                            opts = copy.deepcopy(template[value]['OPTIONS'])
-                            value.rec_walk(breaklevel,anno,opts)
+    options_dict=NestedDefaultDict()
+    options_dict['COUNTING']['valid']['FEATURES'] = "set feature setting"
+    options_dict['TRIMMING']['OPTIONS'][0] = ""
+    options_dict['MAPPING']['OPTIONS'][0] = "set indexing options"
+    options_dict['MAPPING']['OPTIONS'][1] = "set mapping options"
+    options_dict['MAPPING']['OPTIONS'][2] = "set name extension for index"
+    options_dict['DAS']['OPTIONS'][0] = "set counting options"
+    options_dict['DAS']['OPTIONS'][1] = "set diego options"
+    options_dict['DEU']['OPTIONS'][0] = "set counting options"
+    options_dict['DEU']['OPTIONS'][1] = "set x options"
+    options_dict['DE']['OPTIONS'][0] = "set counting options"
+    options_dict['DE']['OPTIONS'][1] = "set x options"
 
-                    if any(key == x for x in POSTPROCESSING):
-                        print()
+    for workflow in WORKFLOWS:
+        print(f"Make Settings for {workflow}\n")
+        # print("select ID's to set")
+        # setting_list=select_id_to_set(condition_dict)
+        setting_list=[
+        [['a', '1', 'x'], ['a', '1', 'y', 'm'], ['a', '1', 'y', 'numbers'], ['a', '2'], ['a', '3']],
+        [['b', '1'], ['b', '2', 'x'], ['b', '2', 'y'], ['b', '3']],
+        [['c', '1'], ['c', '2'], ['c', '3']]
+        ]
+        if 'valid' in options_dict[workflow].keys():
+            for opts in options_dict[workflow]['valid'].keys():
+                config_dict[workflow]['valid'][opts] = conversation(options_dict[workflow]['valid'][[opts]], config_dict[workflow]['valid'][opts])
+        for setting in setting_list:
+            switch=True
+            for set in setting:
+                cdict=config_dict[workflow]
+                for key in set:
+                    last=key
+                    cdict=cdict[key]
 
-    except Exception as err:
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        tbe = tb.TracebackException(
-        exc_type, exc_value, exc_tb,
-        )
-        log.error(logid+''.join(tbe.format()))
+                if switch:
+                    # set_relations(cdict,workflow)
+                    cdict['ANNOTATION'] = conversation("set annotation",cdict['ANNOTATION'])
+                    for i in range(len(cdict['OPTIONS'])):
+                        cdict['OPTIONS'][i] = conversation(options_dict[workflow]['OPTIONS'][i],cdict['OPTIONS'][i])
+                    options=cdict['OPTIONS']
+                    annotation=cdict['ANNOTATION']
+                    switch=False
+                else:
+                    cdict['OPTIONS']=options
+                    cdict['ANNOTATION']=annotation
+
+
+    print_dict(config_dict)
+
+
+    # except Exception as err:
+    #     exc_type, exc_value, exc_tb = sys.exc_info()
+    #     tbe = tb.TracebackException(
+    #     exc_type, exc_value, exc_tb,
+    #     )
+    #     log.error(logid+''.join(tbe.format()))
 
 #
 #
