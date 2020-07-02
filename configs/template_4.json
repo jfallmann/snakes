@@ -103,12 +103,7 @@
         "deseq2": "Analysis/DE/DESEQ2.R",
         "edger": "Analysis/DE/EDGER.R"
       },
-      "COMPARABLE": {
-        "contrast_special": [
-          [],
-          []
-        ]
-      },
+      "COMPARABLE": {},
     },
     "ANNOTATION": [],
     "RELATIONS": [],
@@ -127,12 +122,7 @@
         "dexseq": "Analysis/DEU/DEXSEQ.R",
         "edger": "Analysis/DEU/EDGER.R"
       },
-      "COMPARABLE": {
-        "contrast_special": [
-          [],
-          []
-        ]
-      },
+      "COMPARABLE": {},
     },
     "ANNOTATION": [],
     "RELATIONS": [],
@@ -151,12 +141,7 @@
         "edger": "Analysis/DAS/EDGER.R",
         "diego": "Analysis/DAS/DIEGO.py"
       },
-      "COMPARABLE": {
-        "contrast_special": [
-          [],
-          []
-        ]
-      },
+      "COMPARABLE": {},
     },
     "ANNOTATION": [],
     "RELATIONS": [],
