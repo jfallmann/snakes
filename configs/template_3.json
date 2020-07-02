@@ -4,6 +4,7 @@
   "BINS": ["FASTQ","GENOMES","snakes/scripts"],
   "MAXTHREADS": [],
   "GENOME": {},
+  "SEQUENCING": {},
 
   "MAPPING": {
     "ENV": "star",
