@@ -355,6 +355,7 @@ def project_path():
     return condition_structure()
 
 def condition_structure():
+    operator.title("CREATE CONDITION-TREE")
     operator.display(
     text=get_doc('conditiontree'),
     option="enter to continue",
@@ -363,7 +364,6 @@ def condition_structure():
     return create_experiment()
 
 def create_experiment():
-    operator.title("CREATE CONDITION-TREE")
     create_condition_dict(condition_dict,[project_name])
     global conditions
     conditions=[pattern for pattern in condition_dict.get_condition_list()]
@@ -682,7 +682,7 @@ def main():
     ' | .` |   / -_)   \ \ /   |  _|   \__ \  | ` \   / _` |   | / /   / -_)   (_-<\n'\
     ' |_|\_|   \___|   /_\_\   _\__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/_\n'\
     '_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|\n'\
-    '`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`\n'
+    ' `-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`\n'
 
     print("\n\n\n\n")
     for line in header.split('\n'):
