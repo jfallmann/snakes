@@ -307,5 +307,26 @@
                 }
             }
         }
+    },
+#RIBO #ab hier kann ma ribo spezifische Dinge einfuellen
+    "RIBO" : {
+        "id": {
+            "condition": {
+                "setting": {  # See above
+                              "ENV" : "ribotish",
+                              "BIN" : "ribotish", #falls ma sowas braucht
+                              "ANNOTATION": "genome_or_other.gff3.gz",
+                              "OPTIONS":
+                                [#Liste von optionen, erster Eintrag waere hier options fuer ribotishQualityRIBO
+                                    { #hier options fuer ribotishQualityRIBO
+                                    "offsetparameters": "10"
+                                    },
+                                    {#hier waeren die options fuer ribotish, usw, geparsed with mit den lambda funktionen die ich ins smk kopiert hab oder mit einer funktion die in die Collections.py kommt wie z.B. am Anfang die env_bin_from_config3
+
+                                    }
+                              ]
+                           }
+            }
+        }
     }
 }
