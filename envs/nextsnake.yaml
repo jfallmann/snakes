@@ -1,4 +1,4 @@
-name: nextsnake
+name: snakemake
 channels:
   - conda-forge
   - bioconda
@@ -19,17 +19,19 @@ dependencies:
   - botocore=1.15.49
   - brotlipy=0.7.0
   - bzip2=1.0.8
-  - ca-certificates=2020.4.5.1
+  - ca-certificates=2020.6.20
   - cachetools=3.1.1
   - cairo=1.16.0
-  - certifi=2020.4.5.1
+  - certifi=2020.6.20
   - cffi=1.14.0
   - chardet=3.0.4
+  - conda=4.8.3
+  - conda-package-handling=1.6.0
   - configargparse=1.2.3
   - coreutils=8.31
   - crc32c=2.0
   - cryptography=2.9.2
-  - curl=7.69.1
+  - curl=7.71.1
   - datrie=0.8.2
   - decorator=4.4.2
   - docutils=0.15.2
@@ -49,7 +51,9 @@ dependencies:
   - glib=2.64.2
   - gobject-introspection=1.58.2
   - google-api-core=1.17.0
+  - google-api-python-client=1.9.1
   - google-auth=1.14.1
+  - google-auth-httplib2=0.0.3
   - google-cloud-core=1.3.0
   - google-cloud-storage=1.28.0
   - google-resumable-media=0.5.0
@@ -58,6 +62,7 @@ dependencies:
   - graphviz=2.38.0
   - grep=3.4
   - harfbuzz=2.4.0
+  - httplib2=0.18.1
   - icu=64.2
   - idna=2.9
   - imagemagick=7.0.8_54
@@ -73,10 +78,11 @@ dependencies:
   - krb5=1.17.1
   - lcms2=2.9
   - ld_impl_linux-64=2.34
+  - libarchive=3.3.3
   - libblas=3.8.0
   - libcblas=3.8.0
   - libcroco=0.6.13
-  - libcurl=7.69.1
+  - libcurl=7.71.1
   - libedit=3.1.20170329
   - libffi=3.2.1
   - libgcc-ng=9.2.0
@@ -87,7 +93,8 @@ dependencies:
   - libpng=1.6.37
   - libprotobuf=3.11.4
   - librsvg=2.44.14
-  - libssh2=1.8.2
+  - libsolv=0.7.14
+  - libssh2=1.9.0
   - libstdcxx-ng=9.2.0
   - libtiff=4.1.0
   - libtool=2.4.6
@@ -97,6 +104,8 @@ dependencies:
   - libxml2=2.9.10
   - llvm-openmp=10.0.0
   - lz4-c=1.9.2
+  - lzo=2.10
+  - mamba=0.4.1
   - markupsafe=1.1.1
   - mpi=1.0
   - mpich=3.3.2
@@ -105,8 +114,9 @@ dependencies:
   - nbformat=5.0.6
   - ncurses=6.1
   - networkx=2.4
-  - nextflow=20.01.0
+  - nextflow=20.04.1
   - numpy=1.18.1
+  - oauth2client=4.1.3
   - openjdk=11.0.1
   - openjpeg=2.3.1
   - openssl=1.1.1g
@@ -124,6 +134,7 @@ dependencies:
   - pthread-stubs=0.4
   - pyasn1=0.4.8
   - pyasn1-modules=0.2.7
+  - pycosat=0.6.3
   - pycparser=2.20
   - pygments=2.6.1
   - pygraphviz=1.5
@@ -142,16 +153,21 @@ dependencies:
   - readline=8.0
   - requests=2.23.0
   - rsa=4.0
+  - ruamel_yaml=0.15.80
   - s3transfer=0.3.3
   - setuptools=46.1.3
+  - simplejson=3.17.0
   - six=1.14.0
+  - slacker=0.14.0
   - smmap=3.0.2
-  - snakemake=5.16.0
-  - snakemake-minimal=5.16.0
+  - snakemake=5.20.1
+  - snakemake-minimal=5.20.1
   - sqlite=3.30.1
   - tk=8.6.10
   - toposort=1.5
+  - tqdm=4.47.0
   - traitlets=4.3.3
+  - uritemplate=3.0.1
   - urllib3=1.25.9
   - wheel=0.34.2
   - wrapt=1.12.1
@@ -181,3 +197,4 @@ dependencies:
   - zipp=3.1.0
   - zlib=1.2.11
   - zstd=1.4.4
+
