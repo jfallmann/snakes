@@ -76,7 +76,12 @@ class Operator():
         'H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
         '1','2','3','4','5','6','7','8','9','0','(',')','_','-',',','.',':','/']
         while True:
+            global toclear
             a = input(" >>> ").strip().replace(" ","")
+            if a == "outbreak":
+                toclear+=1
+                outbreak()
+                return
             if any(x not in allowed_characters for x in a):
                 self.clear(2)
                 print("You used unallowed letters, try again")
@@ -121,7 +126,7 @@ class Operator():
             for line in default.split('\n'):
                 print(f" ║     >   {line} {' '*(88-len(line))}║");toclear+=1
             print(f" ║{' '*98}║");toclear+=1
-        print(f' ╚{"═"*98}╝');toclear+=1
+        print(f" ╚{'═'*67} enter 'outbreak' to correct ══╝");toclear+=1
         print('\n');toclear+=1
         if question:
             for line in question.split('\n'):
@@ -270,6 +275,39 @@ def print_json(paramdict,ofn):
     with open(os.path.join(project,ofn),'w') as jsonout:
         print(json.dumps(paramdict,indent=4),file=jsonout)
 
+
+
+##########################
+# conversation functions #
+##########################
+
+conversation_dict={
+"1":"new or append",
+"2":"create project-folder",
+"3":"select samples",
+"4":"choose workflows"
+}
+
+def outbreak():
+    global conversation_dict
+    operator.title("OUTBREAK")
+    operator.display(
+    text="choose one step",
+    option=None,
+    default='\n'.join("%s:  %r" % (key,val) for (key,val) in conversation_dict.items()),
+    question="enter number'",
+    proof="only_numbers"
+    )
+    step = operator.get_answer()
+    if step == '1':
+        start()
+    if step == '2':
+        create_project()
+    if step == '3':
+        add_samples()
+    if step == '4':
+        select_workflows()
+
 def start():
     operator.title("INTRO")
     operator.display(
@@ -289,6 +327,7 @@ def start():
         return append()
 
 def intro2():
+    operator.title("ERROR")
     operator.display(
     text=f"In the directory you entered, a folder with the name '{project_name}' already exist. \nSo please say again: do you want to create a new project or append an existing?",
     option="Enter 'append' for expanding an existing configfile or 'new' for a new project",
@@ -301,6 +340,7 @@ def intro2():
         return append()
 
 def folder_error():
+    operator.title("ERROR")
     operator.display(
     text="It looks like you already set up your project-folder. \mWe would therefor skip setting it up now. \n\nEnter 'n' if you want to do that anyway.",
     option="wanna skip the Guide?",
@@ -391,12 +431,12 @@ def add_samples():
         path_to_samples = operator.get_answer()
         if os.path.isdir(path_to_samples):
             break
-    samples = [x for x in os.listdir(path_to_samples) if x.endswith(".fastq")]
+    samples = [x for x in os.listdir(path_to_samples) if x.endswith(".fastq.gz")]
     global sample_dict
     sample_dict={}
     counter=1
     for file in sorted(os.listdir(path_to_samples)):
-        if file.endswith('.fastq'):
+        if file.endswith('.fastq.gz'):
             sample_dict[counter]=[file, os.path.join(path_to_samples,file)]
             counter+=1
     return assign_samples()
@@ -408,7 +448,7 @@ def assign_samples():
     for condition in conditions:
         samples_lines=''
         for k,v in sample_dict.items():
-            samples_lines+=f"{' '*3}>  {k}  -  {v[0].replace('.fastq','')}\n"
+            samples_lines+=f"{' '*3}>  {k}  -  {v[0].replace('.fastq.gz','')}\n"
         cond_as_list=[x for x in condition.split(':')]
         operator.display(
         text=location(condition_dict,[cond_as_list]),
