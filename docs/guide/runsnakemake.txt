@@ -1,7 +1,4 @@
-                  ****************************************
-
-                          All right, We are done!!
-
+All right, We are done!!
 
 Now you can start the pipeline and enjoy. You just have to navigate to your
 PROJECT-FOLDER and run 'RunSnakemake.py' with your CONFIGFILE.

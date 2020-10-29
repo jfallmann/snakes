@@ -570,7 +570,7 @@ for workflow in WORKFLOWS:
                 config_dict[workflow]['valid']['COMPARABLE'][comp_name]=[[],[]]
                 answer = display(
                 text=json.dumps(condition_dict,indent=6),
-                option='select all keys for first comparison group',
+                option='select all keys for FIRST comparison group',
                 defaults=None,
                 question="enter comma separated",
                 proof=[x for x in condition_dict.get_all_keys()]
@@ -578,10 +578,10 @@ for workflow in WORKFLOWS:
                 config_dict[workflow]['valid']['COMPARABLE'][comp_name][0]=answer
                 answer = display(
                 text=json.dumps(condition_dict,indent=6),
-                option='select all keys for first comparison group',
+                option='select all keys for SECOND comparison group',
                 defaults=None,
                 question="enter comma separated",
-                proof=[x for x in condition_dict.get_all_keys()]
+                proof=conditions
                 )
                 config_dict[workflow]['valid']['COMPARABLE'][comp_name][1]=answer
 
