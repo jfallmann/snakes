@@ -1,873 +1,755 @@
-#!/usr/bin/env python3
-# Configurator.py ---
-#
-# Filename: Configurator.py
-# Description:
-# Author: Joerg Fallmann
-# Maintainer:
-# Created: Mon Feb 10 08:09:48 2020 (+0100)
-# Version:
-# Package-Requires: ()
-# Last-Updated: Wed Jan 20 22:30:58 2021 (+0100)
-#           By: Joerg Fallmann
-#     Update #: 553
-# URL:
-# Doc URL:
-# Keywords:
-# Compatibility:
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or (at
-# your option) any later version.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
-# <http://www.gnu.org/licenses/>.
-
-import glob, os, sys, inspect, json, shutil
-from collections import defaultdict, deque
-import traceback as tb
-from snakemake import load_configfile
-from snakemake.utils import validate, min_version
-import argparse
-import subprocess
-import re
-import sys
-import copy
+import os
 import json
-import random
-import logging
+import copy
+import readline
+import glob
+from snakemake import load_configfile
+from collections import defaultdict
 
-min_version("5.8.2")
-
-from lib.Collection import *
-from lib.Logger import *
-scriptname=os.path.basename(__file__)
-
-def parseargs():
-    parser = argparse.ArgumentParser(description='Helper to create initial config file used for workflow processing')
-    parser.add_argument("-q", "--quickmode", action="store_true", help='If set configuration without explanation')
-
-    return parser.parse_args()
-
-####################
-#### FUNCTIONS  ####
-####################
-
-def check_run(func):
-    def func_wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-
-        except Exception:
-            exc_type, exc_value, exc_tb = sys.exc_info()
-            tbe = tb.TracebackException(
-                exc_type, exc_value, exc_tb,
-            )
-            log.error(''.join(tbe.format()))
-    return func_wrapper
-
-@check_run
-def create_json_config(configfile, append, template, preprocess, workflows, postprocess, ics, refdir, binaries, procs, genomemap, genomes, genomeext, sequencing, annotation, optionalargs=None):
-    # CLEANUP
-    oldcnf = os.path.abspath(configfile)
-    for oldfile in glob.glob(oldcnf):
-        shutil.copy2(oldfile, oldfile+'.bak')
-        log.warning(logid+'Found old config file'+oldfile+' created backup of old config '+oldfile+'.bak')
-
-    config = load_configfile(os.path.abspath(template))
-    newconf = NestedDefaultDict()
-    oldconf = NestedDefaultDict()
-    icslist = list()
-    oldics = []
-    oldtodos = ['NAME','SOURCE','SEQUENCING','SAMPLES']
-
-    todos = ','.join([x for x in [preprocess, workflows, postprocess] if x != '' ]).split(',')
-    for x in todos:
-        if x not in config and x != "":
-            log.error(logid+'Key '+str(x)+' not found in template, please check for typos!')
-            sys.exit()
-
-    log.info(logid+'Creating config json for steps '+str(todos))
-
-    genmap = defaultdict()
-    if genomemap:
-        genmap = {key: value for (key, value) in [x.split(':') for x in genomemap.split(',')]}
-        log.debug(logid+'GENOMEMAP: '+str(genmap))
-    else:
-        if not append:
-            log.error(logid+'No mapping of sample-ID to genome-ID found, please provide -m option')
-            sys.exit()
-
-    gens = defaultdict()
-    if genomes:
-        gens = {key: value for (key, value) in [x.split(':') for x in genomes.split(',')]}
-        log.debug(logid+'REFERENCES: '+str(gens))
-    else:
-        if not append:
-            log.error(logid+'No mapping of genome to genome fasta found, please provide -g option')
-            sys.exit()
-
-    genext = defaultdict()
-    if genomeext:
-        genext = {key: value for (key, value) in [x.split(':') for x in genomeext.split(',')]}
-        log.debug(logid+'GENOMEEXTENSION: '+str(genext))
-    if ics or append:
-        if append:
-            oldconf = load_configfile(os.path.abspath(os.path.join(configfile)))
-            for id in oldconf['SAMPLES'].keys():
-                for condition in oldconf['SAMPLES'][id].keys():
-                    for setting in oldconf['SAMPLES'][id][condition].keys():
-                        icslist.append(f"{id}:{condition}:{setting}")
-                        oldics.append([[id],[condition],[setting]])
-            for x in oldconf['PREPROCESSING'].split(","):
-                oldtodos.append(x)
-                todos.append(x)
-            for x in oldconf['WORKFLOWS'].split(","):
-                oldtodos.append(x)
-                todos.append(x)
-            for x in oldconf['POSTPROCESSING'].split(","):
-                oldtodos.append(x)
-                todos.append(x)
-        if ics:
-            for x in ics.split(','):
-                if x not in icslist:
-                    icslist.append(x)
-    else:
-        log.error(logid+'IdentifierConditionSetting (ics) not defined!')
-        sys.exit()
-    todos = [x for x in todos if x]
-
-    log.debug(logid+'List of IdentifierConditionSettings: '+str(icslist))
-
-
-    seqlist = [s.replace(':',',') for s in sequencing.split(',')]
-
-    if not append:
-        #newconf.merge(config)
-        newconf['PREPROCESSING'] = preprocess
-        newconf['WORKFLOWS'] = workflows
-        newconf['POSTPROCESSING'] = postprocess
-        newconf['REFERENCE'] = refdir
-        newconf['BINS'] = binaries
-        newconf['MAXTHREADS'] = str(procs)
-        newconf['GENOME'] = NestedDefaultDict()
-
-        for k, v in gens.items():
-            newconf['GENOME'][str(k)] = str(v)
-
-        for key in ['NAME','SOURCE','SEQUENCING','SAMPLES']:
-            for id, condition, setting in [x.split(':') for x in icslist]:
-                if key == 'NAME':
-                    if genomeext:
-                        for k, v in genext.items():
-                            if str(v) is None or str(v) == 'None':
-                                v = ''
-                            newconf[key][id][condition][setting] = str(v)
-                    else:
-                        newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
-                elif key == 'SOURCE':
-                    if genomemap:
-                        for k, v in genmap.items():
-                            # if v in newconf['GENOME']:
-                            newconf[key][id][condition][setting] = str(v)
-                    else:
-                        newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
-                elif key == 'SEQUENCING':
-                    if len(seqlist) > 0:
-                        newconf[key][id][condition][setting] = deque(seqlist).popleft()
-                    else:
-                        newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
-                elif key == 'SAMPLES':
-                    samplelist = get_samples_from_dir_2(id, condition, setting, newconf)
-                    log.debug(logid+'SAMPLELIST: '+str(samplelist))
-                    if len(samplelist) > 0:
-                        newconf[key][id][condition][setting] = samplelist
-                    else:
-                        newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
+class NestedDefaultDict(defaultdict):
+    def __init__(self, *args, **kwargs):
+        super(NestedDefaultDict, self).__init__(NestedDefaultDict, *args, **kwargs)
+    def __repr__(self):
+        return repr(dict(self))
+    def merge(self, *args):
+        self = merge_dicts(self,*args)
+    def rec_equip(self, ics ,key):
+        if len(ics)==1:
+            if not template[key]:
+                self[ics[0]] =""
+            else:
+                self[ics[0]] = template[key]
+                self[ics[0]].pop("valid", None)
+            return
+        self[ics[0]].rec_equip(ics[1:],key)
+    def equip(self, config, conditions, WORKFLOWS):
+        for k,v in config.items():
+            if k in WORKFLOWS:
+                if isinstance(v, dict):
+                    if "valid" in config[k].keys():
+                        self[k]["valid"]=config[k]["valid"]
+                    for c in conditions:
+                        ics=c.split(':')
+                        self[k].rec_equip(ics, k)
                 else:
-                    newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
+                    self[k]=""
+    def get_all_keys(self):
+        for key, value in self.items():
+            if isinstance(value, dict):
+                yield key
+                yield from value.get_all_keys()
+            else:
+                yield key
+    def get_condition_list(self, keylist=[]):
+        for k,v in self.items():
+            keylist.append(k,)
+            if not v:
+                yield ':'.join(keylist)
+            else:
+                yield from v.get_condition_list(keylist)
+            keylist.pop()
+    def get_nodes(self,path=[]):
+        for key, value in self.items():
+            path.append(key)
+            if isinstance(value, dict):
+                yield '-'.join(path)
+                yield from value.get_nodes(path)
+                path.pop()
+            else:
+                yield '-'.join(path)
 
-    else:
-        # newconf.merge(oldconfig)
+class Operator():
+    def __init__(self):
+        self.text=""
+        self.option=""
+        self.default=""
+        self.question=""
+        self.answer=""
+    def clear(self, number):
+        os.system(f'echo -e "\e[{number}A\033[2K"')
+        for i in range(number-1):
+            os.system(f'echo -e "\e[-1A\033[2K"')
+        os.system(f'echo -e "\e[{number}A\03\c"')
+    def get_answer(self):
+        return str(self.answer)
+    def complete(text, state):
+        return (glob.glob(text+'*')+[None])[state]
 
-        if preprocess and preprocess not in newconf['PREPROCESSING']:
-            newconf['PREPROCESSING'] = str.join(',', list(set(str.join(',',[oldconf['PREPROCESSING'], preprocess]).split(','))))
-        else:
-            newconf['PREPROCESSING'] = oldconf['PREPROCESSING']
-        if workflows and workflows not in newconf['WORKFLOWS']:
-            newconf['WORKFLOWS'] = str.join(',', list(set(str.join(',',[oldconf['WORKFLOWS'], workflows]).split(','))))
-        else:
-            newconf['WORKFLOWS'] = oldconf['WORKFLOWS']
-        if postprocess and postprocess not in newconf['POSTPROCESSING']:
-            newconf['POSTPROCESSING'] = str.join(',', list(set(str.join(',',[oldconf['POSTPROCESSING'], postprocess]).split(','))))
-        else:
-            newconf['POSTPROCESSING'] = oldconf['POSTPROCESSING']
-        if refdir and refdir != oldconf['REFERENCE']:
-            newconf['REFERENCE'] = refdir
-        else:
-            newconf['REFERENCE'] = str(oldconf['REFERENCE'])
-        if binaries and binaries != oldconf['BINS']:
-            newconf['BINS'] = binaries
-        else:
-            newconf['BINS'] = str(oldconf['BINS'])
-        if procs and procs != oldconf['MAXTHREADS']:
-            newconf['MAXTHREADS'] = str(procs)
-        else:
-            newconf['MAXTHREADS'] = str(oldconf['MAXTHREADS'])
-
-        log.debug(logid+'GENOMEMAP: '+str(genomemap)+'\t'+str(genmap))
-
-        if genomes and any([x not in newconf['GENOME'] for x in list(gens.keys())]) or any([[x not in newconf['GENOME'][y] for x in gens[y]] for y in gens.keys()]):
-            newconf['GENOME'] = NestedDefaultDict()
-            newconf['GENOME'].merge(oldconf['GENOME'])
-            for k, v in gens.items():
-                newconf['GENOME'][str(k)] = str(v)
-        elif isinstance(oldconf['GENOME'], dict):
-            newconf['GENOME'] = oldconf['GENOME']
-        else:
-            newconf['GENOME'] = str(oldconf['GENOME'])
-
-        log.debug(logid+'GENOMEMAPCONF: '+str(newconf['GENOME']))
-
-        for key in ['NAME','SOURCE','SEQUENCING','SAMPLES']:
-            for id, condition, setting in [x.split(':') for x in icslist]:
-                try:
-                    newconf[key][id][condition][setting] = oldconf[key][id][condition][setting]
-                except:
-                    if key == 'SAMPLES':
-                        samplelist = get_samples_from_dir_2(id, condition, setting, newconf)
-                        log.debug(logid+'SAMPLELIST: '+str(samplelist))
-                        if len(samplelist) > 0:
-                            newconf[key][id][condition][setting] = samplelist
-                        else:
-                            newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
-                    else:
-                        newconf[key][id][condition][setting] = config[key]['id']['condition']['setting']
-
-        for do in todos:
-            if do not in newconf and do in oldconf:
-                newconf[do].merge(oldconf[do])
-
-    """Now we replace the placeholders in the template config with the actual ones or update an existing config with new workflows"""
-
-    log.debug(logid+'NEW: '+str(newconf))
-
-    for do in todos:
-        if do not in newconf:
-            newconf[do].merge(config[do])
-
-    for key in todos:
-        log.debug(logid+'OLD: '+str(key)+'\t'+str(config[key]))
-
-        for id, condition, setting in [x.split(':') for x in icslist]:
-            if id not in newconf[key]:
-                newconf[key][id] = NestedDefaultDict()
-                log.debug(logid+'ID: '+str(newconf[key]))
-            if condition not in newconf[key][id]:
-                newconf[key][id][condition] = NestedDefaultDict()
-                log.debug(logid+'Condition: '+str(newconf[key]))
-            if setting not in newconf[key][id][condition]:
-                newconf[key][id][condition][setting] = NestedDefaultDict()
-                log.debug(logid+'SETTING: '+str(newconf[key]))
-                newconf[key][id][condition][setting].update(config[key]['id']['condition']['setting'])
-                log.debug(logid+'TODO: '+str(key)+'\t'+str(config[key])+'\t'+str(newconf[key]))
-
-            if 'id' in newconf[key]:
-                newconf[key][id] = newconf[key].pop('id')
-                newconf[key][id][condition] = newconf[key][id].pop('condition')
-                newconf[key][id][condition][setting] = newconf[key][id][condition].pop('setting')
-
-        if key=='DE' or key=="DEU" or key=='DAS':
-            set_relations(newconf, key)
-
-    input=json.dumps(newconf)
-    flatconf=json.loads(input)
-
-    return oldtodos, oldics, flatconf
-
-
-def set_relations(config, key):
-    for id in config['SAMPLES'].keys():
-        for condition in config['SAMPLES'][id].keys():
-            for setting in config['SAMPLES'][id][condition].keys():
-                if config["SAMPLES"][id][condition][setting]:
-                    relations=[]
-                    ics = f"{id}:{condition}:{setting}"
-                    type = config["SEQUENCING"][id][condition][setting]
-                    for sample in config["SAMPLES"][id][condition][setting]:
-                        relations.append((sample, ics, type))
-                    config[key][id][condition][setting]['RELATIONS']=relations
-
-# @check_run
-def print_json(paramdict, ofn):
-    with open(os.path.join(project, ofn),'w') as jsonout:
-        print(json.dumps(paramdict, indent=4), file=jsonout)
-
-def proof_input(proof=None):
-    allowed_characters=['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','1','2','3','4','5','6','7','8','9','0','(',')','_','-',',','.',':','/']
-    while True:
-        a = input(">>> ").strip().replace(" ","")
-        # print("\n")
-        if any(x not in allowed_characters for x in a):
-            print("You used unallowed letters, try again")
-            continue
-        if proof is not None and proof != "only-numbers" and any(x not in proof for x in a.split(",")):
-            print(f"available are only: {proof}")
-            continue
-        if proof=="only-numbers":
-            try:
-                float(a)
-                return a
-            except:
-                print("please enter integer or float")
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(complete)
+    
+    def proof_input(self, proof=None):
+        allowed_characters=['a','b','c','d','e','f','g','h','i','j','k','l','m','n',
+        'o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G',
+        'H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+        '1','2','3','4','5','6','7','8','9','0','(',')','_','-',',','.',':','/']
+        while True:
+            global toclear
+            a = input(" >>> ").strip().replace(" ","")
+            if a == "outbreak":
+                toclear+=1
+                outbreak()
+                return
+            if any(x not in allowed_characters for x in a):
+                self.clear(2)
+                print("You used unallowed letters, try again")
                 continue
-        else:
-            return a
-
-def conversation(question, origin, proof=None):
-    print(question)
-    default = copy.deepcopy(origin)
-    if default is None:
-        a = proof_input(proof)
-        print("\n")
-        return a
-    else:
-        print("\n")
-
-        if isinstance(default, str):
-            print("\t> ", default)
-            print("\n")
-            if proof:
-                print("enter what should be added ")
-            else:
-                print("enter what should be added or enter 'n' to continue ")
-            a = proof_input(proof)
-            print("\n")
-            if a == 'n':
-                print("fine, everything the same!")
-                return default
-            else:
-                return a
-
-        if isinstance(default, dict):
-            if default:
-                for element in default:
-                    print("\t> ", element,": ", default[element])
-            else:
-                print("\t> no entrys so far")
-            print("\n")
-            while True:
-                print("enter 'y' for yes or 'n' for no")
-                a = input(">>> ")
-                if a=='n':
-                    return default
-                if a=='y':
-                    print("okay, tell me your setting:")
-                    if default:
-                        for element in default:
-                            print(element+":")
-                            a = proof_input()
-                            default[element]=a
-                        return default
-                    else:
-                        while True:
-                            print("enter the name of the argument or enter 'n' to quit")
-                            name = proof_input()
-                            if name=='n':
-                                break
-                            print("enter the value")
-                            value = proof_input()
-                            print("\n")
-                            default.update({name:value})
-                    return default
-
-def list_generator(config, workflow):
-    ics_list=[]
-    naming_list=[]
-    level = conversation(f"\n\n> {workflow} <\nChoose setting-level:   'id'   'condition'   'setting'   'all'", None)
-    a=0
-    for id in config[workflow].keys():
-        if id == "TOOLS" or id == "COMPARABLE" or id == "FEATURES":
-            continue
-        i=0
-        for condition in config[workflow][id].keys():
-            c=0
-            for setting in config[workflow][id][condition].keys():
-                ics_list.append([[id],[condition],[setting]])
-                if level=='setting':
-                    naming_list.append([[id],[condition],[setting]])
-                if level=='condition' and c==0:
-                    naming_list.append([[id],[condition],[setting]])
-                    c+=1
-                if level=='id' and i==0:
-                    naming_list.append([[id],[condition],[setting]])
-                    i+=1
-                if level=='all' and a==0:
-                    naming_list.append([[id],[condition],[setting]])
-                    a+=1
-    return ics_list, naming_list
-
-def rename(config, job, oldics, oldtodos,*args):
-    ics_list, naming_list = list_generator(config, job)
-    if job in oldtodos:
-        ics_list = [x for x in ics_list if x not in oldics]
-        naming_list = [x for x in naming_list if x not in oldics]
-    if not ics_list:
-        return
-    for naming in naming_list:
-        switch=False
-        for ics in ics_list:
-                if naming==ics:
-                    switch=True
-                    print(f"okay, look at the settings of {ics[0][0]}:{ics[1][0]}:{ics[2][0]}")
-                    for call in args:
-                        if len(call)==2:
-                            text  =call[0]
-                            proof =call[1]
-                            config[job][ics[0][0]][ics[1][0]][ics[2][0]] = conversation(text, None, proof)
-                        if len(call)==3:
-                            text  =call[0]
-                            key   =call[1]
-                            proof =call[2]
-                            if 'ANNOTATION' in key:
-                                org = config['SOURCE'][ics[0][0]][ics[1][0]][ics[2][0]]
-                                files = os.listdir(os.path.join(project,'REFERENCES', org))
-                                if len(files) > 0:
-                                    print(f"Following annotation-files are available for {org}:")
-                                    print("\n")
-                                    for file in files:
-                                        print("\t> ", os.path.basename(file))
-                                    print("\n")
-                                    while True:
-                                        anno = conversation(text, None, proof)
-                                        if anno not in files:
-                                            a = conversation(f"WARNING: {anno} is not yet in /REFERENCES/{org} \nEnter 'y' for enter it anyway or enter 'n' to try again.", None)
-                                            if 'n' in a:
-                                                continue
-                                            if 'y' in a:
-                                                config[job][ics[0][0]][ics[1][0]][ics[2][0]][key] = anno
-                                                break
-                                        config[job][ics[0][0]][ics[1][0]][ics[2][0]][key] = anno
-                                        break
-                                else:
-                                    print(f"There are no annotation files available for {org}. you can still specify \na file, but then remember to copy it to the directory")
-                                    config[job][ics[0][0]][ics[1][0]][ics[2][0]][key] = conversation(text, None, proof)
-                            else:
-                                config[job][ics[0][0]][ics[1][0]][ics[2][0]][key] = conversation(text, None, proof)
-                        if len(call)==4:
-                            text  =call[0]
-                            key   =call[1]
-                            number=call[2]
-                            proof =call[3]
-                            config[job][ics[0][0]][ics[1][0]][ics[2][0]][key][number] = conversation(text, config[job][naming[0][0]][naming[1][0]][naming[2][0]][key][number], proof)
-                elif ics in naming_list and naming!=ics:
-                    switch=False
-                else:
-                    if switch:
-                        for call in args:
-                            if len(call)==2:
-                                text  =call[0]
-                                proof =call[1]
-                                config[job][ics[0][0]][ics[1][0]][ics[2][0]] = config[job][naming[0][0]][naming[1][0]][naming[2][0]]
-                            if len(call)==3:
-                                text  =call[0]
-                                key   =call[1]
-                                proof =call[2]
-                                config[job][ics[0][0]][ics[1][0]][ics[2][0]][key] = config[job][naming[0][0]][naming[1][0]][naming[2][0]][key]
-                            if len(call)==4:
-                                text  =call[0]
-                                key   =call[1]
-                                number=call[2]
-                                proof =call[3]
-                                config[job][ics[0][0]][ics[1][0]][ics[2][0]][key][number] = config[job][naming[0][0]][naming[1][0]][naming[2][0]][key][number]
-
-
-
-def get_path(input_dict):
-    for key, value in input_dict.items():
-        if isinstance(value, dict):
-            for subkey in get_path(value):
-                yield key + ':' + subkey
-        else:
-            yield key
-
-def add_comparables(config, workflow):
-    config[workflow]['COMPARABLE'] = {}
-    while True:
-        a = conversation("do you want to add a COMPARABLE? enter 'y' or 'n'", None)
-        if a=='y':
-            name=conversation("enter the name", None)
-            ics_list=[]
-            print("to remember, these are your ICS-keys:\n")
-            for id in config[workflow].keys():
-                if id == "TOOLS" or id == "COMPARABLE":
+            if proof is not None and proof != "only_numbers" and any(x not in proof for x in a.split(",")):
+                self.clear(2)
+                print(f"available are: {proof}")
+                continue
+            if proof=="only_numbers":
+                try:
+                    [float(x) for x in a.split(',')]
+                    self.answer = a
+                    break
+                except:
+                    self.clear(2)
+                    print("please enter integer or float")
                     continue
-                ics = f"{id}"
-                ics_list.append(ics)
-                print(f"\t> {id}")
-                for condition in config[workflow][id].keys():
-                    ics = f"{id}:{condition}"
-                    ics_list.append(ics)
-                    print(f"\t> {id}:{condition}")
-                    for setting in config[workflow][id][condition].keys():
-                        ics = f"{id}:{condition}:{setting}"
-                        ics_list.append(ics)
-                        print(f"\t> {ics}")
-            print("\n")
-            group1=conversation("enter all ICS-keys for GROUP 1.", None, ics_list)
-            group2=conversation("enter all ICS-keys for GROUP 2", None, ics_list)
-            config[workflow]['COMPARABLE'].update({name:[group1.split(','), group2.split(',')]})
-            print("\n")
-        elif a=='n':
+            else:
+                self.answer = a
+                break
+    def title(self, text):
+        global toclear
+        self.clear(toclear)
+        print(f"\n{' '*(50-int((len(text)+4)/2))}> {text} <\n\n")
+        toclear = 1
+    def display(self, text=None, option=None, default=None, question=None, proof=None):
+        global toclear
+        self.clear(toclear)
+        toclear=1
+        print(f' ╔{"═"*98}╗');toclear+=1
+        print(f" ║{' '*98}║");toclear+=1
+        for line in text.split('\n'):
+            print(f" ║ {line}{' '*(97-len(line))}║");toclear+=1
+        print(f" ║{' '*98}║");toclear+=1
+        print(f" ╠{'═'*98}╣");toclear+=1
+        if option :
+            print(f" ║{' '*98}║");toclear+=1
+            for line in option.split('\n'):
+                print(f" ║ {line}{' '*(97-len(line))}║");toclear+=1
+            print(f" ║{' '*98}║");toclear+=1
+        if default:
+            for line in default.split('\n'):
+                print(f" ║     >   {line} {' '*(88-len(line))}║");toclear+=1
+            print(f" ║{' '*98}║");toclear+=1
+        print(f" ╚{'═'*67} enter 'outbreak' to correct ══╝");toclear+=1
+        print('\n');toclear+=1
+        if question:
+            for line in question.split('\n'):
+                print(f" {line}");toclear+=1
+        self.proof_input(proof);toclear+=1
+
+def print_dict(dict, indent=6):
+    print(json.dumps(dict, indent=indent))
+
+def create_sample_dirs(d,dir):
+    for k,v in d.items():
+        if isinstance(v, dict):
+            dir.append(k)
+            os.mkdir('/'+'/'.join(dir))
+            create_sample_dirs(v,dir)
+            dir.pop()
+def depth(d):
+    if isinstance(d, dict):
+        return 1 + (max(map(depth, d.values())) if d else 0)
+    return 0
+
+def decouple(d):
+    string = json.dumps(d)
+    return json.loads(string)
+
+def select_id_to_set(cdict,i,indent=6):
+    text=json.dumps(cdict, indent=indent)
+    d = depth(cdict)
+    out=""
+    path=[]
+    setting_list=[]
+    reminder=''
+    counter=0
+    for line in text.split('\n'):
+        level = int(((len(line) - len(line.lstrip(' ')))-indent)/indent)
+        key = line.replace('"','').replace('{','').replace('}','').replace(':','').replace(',','').strip()
+        if key:
+            if len(path) > level:
+                path=path[:-(len(path)-level)]
+            path.append(key)
+        if level == i and ':' in line:
+            if reminder != key:
+                counter+=1
+                reminder = key
+                setting_list.append([])
+        elif level<i and '{}' in line:
+            counter +=1
+            setting_list.append([])
+        if '{}' in line:
+            if ',' in line:
+                out+= f"{line}{' '*(14-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}\n"
+            else:
+                out+= f"{line}{' '*(15-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}\n"
+            setting_list[-1].append(path)
+        else:
+            out+=line+'\n'
+    return out,setting_list
+
+def get_doc(filename):
+    path = os.path.join("docs/guide",f"{filename}.txt")
+    out=""
+    with open(path, 'r') as f:
+        out = f.read()
+    return out
+
+def location(dictionary,setting,indent=6):
+    spots=copy.deepcopy(setting)
+    d = depth(dictionary)
+    out=""
+    text = json.dumps(dictionary, indent=indent)
+    for line in text.split('\n'):
+        switch=True
+        level = int(((len(line) - len(line.lstrip(' ')))-indent)/indent)
+        key = line.replace('"','').replace('{','').replace('}','').replace(':','').replace(',','').strip()
+        if key:
+            for path in spots:
+                if not path:
+                    continue
+                if path[0] == key:
+                    path.pop(0)
+                    if not path:
+                        if ',' in line:
+                            out+=f"{line}{' '*(14-len(key) + indent*(d-2)-indent*level)} <-\n"
+                        else:
+                            out+=f"{line}{' '*(15-len(key) + indent*(d-2)-indent*level)} <-\n"
+                        switch=False
+        if switch:
+            out+=line+'\n'
+    return out
+
+def print_dict_pointer(dict,path,copy,indent=6):
+    text=json.dumps(dict, indent=indent)
+    route=['step']+path.copy()
+    out=""
+    stepper=1
+    for line in text.split('\n'):
+        level = int(((len(line) - len(line.lstrip(' ')))-indent)/indent)
+        key = line.replace('"','').replace('{','').replace('}','').replace(':','').replace(',','').strip()
+        if level+1 >= len(route):
+            out+=line+'\n'
+        elif not key:
+            out+=line+'\n'
+        elif route[level+1] == key and route[level] == 'step':
+            route[stepper] = 'step'
+            stepper+=1
+            if len(route) == level+2:
+                if route[level-1] == 'step':
+                    if copy and copy != ['']:
+                        out+=f"{line}    <-\n"
+                        option=f"enter new ID's \n\nor copy {copy} with 'cp'"
+                    else:
+                        out+=f"{line}    <-\n"
+                        option="enter new ID's"
+            else:
+                out+=line+'\n'
+        else:
+            out+=line+'\n'
+    return out, option
+
+def create_condition_dict(subtree,leafes,path=[],tree=None):
+    global toclear
+    if tree==None:
+        tree=subtree
+    if not leafes[0]:
+        path.pop()
+        return
+    for leaf in leafes:
+        subtree[leaf]
+    copy=[]
+    for k,v in subtree.items():
+        path.append(k)
+        # if tree==subtree:
+        #     print("\n")
+        text, opt = print_dict_pointer(tree, path, copy)
+        operator.display(
+        text=text,
+        option=opt
+        )
+        if operator.get_answer():
+            leafes=[x for x in operator.get_answer().split(',')]
+        else:
+            leafes=['']
+        if leafes==["cp"]:
+            leafes=copy
+        create_condition_dict(subtree[k],leafes,path,tree)
+        copy=leafes
+        leafes=['']
+    if len(path)>0:
+        path.pop()
+    return
+def print_json(paramdict,ofn):
+    global project
+    with open(os.path.join(project,ofn),'w') as jsonout:
+        print(json.dumps(paramdict,indent=4),file=jsonout)
+
+
+
+
+
+##########################
+# conversation functions #
+##########################
+
+conversation_dict={
+"1":"new or append",
+"2":"create project-folder",
+"3":"select samples",
+"4":"choose workflows"
+}
+
+def outbreak():
+    global conversation_dict
+    operator.title("OUTBREAK")
+    operator.display(
+    text="choose one step",
+    option=None,
+    default='\n'.join("%s:  %r" % (key,val) for (key,val) in conversation_dict.items()),
+    question="enter number'",
+    proof="only_numbers"
+    )
+    step = operator.get_answer()
+    if step == '1':
+        start()
+    if step == '2':
+        create_project()
+    if step == '3':
+        add_samples()
+    if step == '4':
+        select_workflows()
+
+def start():
+    operator.title("INTRO")
+    operator.display(
+    text=get_doc("intro"),
+    option="Enter 'append' for expanding an existing configfile or 'new' for a new project",
+    default=None,
+    question="enter 'new' or 'append'",
+    proof=['new','append']
+    )
+    if operator.get_answer() == 'new':
+        # if any(x in os.listdir('../') for x in ['FASTQ','GENOMES']):
+        #     return FOLDERERROR
+        # else:
+        #     return PNAME
+        return create_project()
+    if operator.get_answer() == 'append':
+        return append()
+
+def intro2():
+    operator.title("ERROR")
+    operator.display(
+    text=f"In the directory you entered, a folder with the name '{project_name}' already exist. \nSo please say again: do you want to create a new project or append an existing?",
+    option="Enter 'append' for expanding an existing configfile or 'new' for a new project",
+    question="enter 'new' or 'append'",
+    proof=['new','append']
+    )
+    if operator.get_answer() == 'new':
+        return create_project()
+    if operator.get_answer() == 'append':
+        return append()
+
+def folder_error():
+    operator.title("ERROR")
+    operator.display(
+    text="It looks like you already set up your project-folder. \mWe would therefor skip setting it up now. \n\nEnter 'n' if you want to do that anyway.",
+    option="wanna skip the Guide?",
+    question="[ n / Y ]"
+    )
+    if operator.get_answer() == 'n':
+        return project_name()
+    if operator.get_answer() == 'y':
+        return end()
+
+def create_project():
+    operator.title("CREATE PROJECT-FOLDER")
+    operator.display(
+    text=get_doc("projectfolder"),
+    option="Enter the name of your Project",
+    default=None,
+    question="please don't use special characters",
+    proof=None
+    )
+    global project_name
+    project_name = operator.get_answer()
+    return project_path()
+
+def project_path():
+    global project
+    switch=False
+    while True:
+        if switch:
+            ques="Enter the absolute path, where your project should be created\nsorry, couldn't find this directory"
+        else:
+            ques="Enter the absolute path, where your project-folder should be created  "
+        operator.display(
+        text=get_doc("projectfolder"),
+        option=ques,
+        question="enter it like  /home/path/to/NextSnakesProjects",
+        default=None,
+        proof=None
+        )
+        global project
+        path_to_project = operator.get_answer()
+        if os.path.isdir(path_to_project):
+            project = os.path.join(path_to_project,project_name)
+            if os.path.isdir(project):
+                return intro2()
+            os.mkdir(project)
+            os.mkdir(os.path.join(project,"FASTQ"))
+            os.mkdir(os.path.join(project,"GENOMES"))
+            os.symlink(cwd, os.path.join(project,'snakes'))
             break
         else:
-            print("enter 'y' or 'n'!")
+            switch=True
+    return condition_structure()
 
-def add_tools(config, workflow):
-    tools_dict=config[workflow]['TOOLS']
-    tools = conversation(f"choose from these tools: {list(tools_dict.keys())}", None)
-    config[workflow]['TOOLS'] = {}
-    for tool in tools.split(','):
-        config[workflow]['TOOLS'].update({tool:tools_dict[tool]})
+def condition_structure():
+    operator.title("CREATE CONDITION-TREE")
+    operator.display(
+    text=get_doc('conditiontree'),
+    option="enter to continue",
+    proof=None
+    )
+    return create_experiment()
 
-def explain(filename):
-    if not quick:
-        path = os.path.join("docs/guide", filename)
-        print("\n")
-        with open(path, 'r') as f:
-            text = f.read().splitlines()
-            counter=1
-            for line in text:
-                print(line)
-                if counter == 30:
-                    input("                                                     > press enter to continue <")
-                    counter=0
-                counter+=1
-        print("\n")
+def create_experiment():
+    create_condition_dict(condition_dict,[project_name])
+    global conditions
+    conditions=[pattern for pattern in condition_dict.get_condition_list()]
+    path_list=[x for x in project.split('/') if x]
+    path_list.append('FASTQ')
+    create_sample_dirs(condition_dict[project_name],path_list)
+    return add_samples()
 
-####################
-####    MAIN    ####
-####################
+def add_samples():
+    switch=False
+    operator.title("ADD SAMPLES")
+    while True:
+        if switch:
+            ques="Enter the absolute path where your samples are stored\nsorry, couldn't find this directory"
+        else:
+            ques="Enter the absolute path "
+        switch=True
+        operator.display(
+        text=get_doc("samples"),
+        option=ques,
+        default=None,
+        question="enter like  /home/path/to/Samples",
+        proof=None
+        )
+        path_to_samples = operator.get_answer()
+        if os.path.isdir(path_to_samples):
+            break
+    samples = [x for x in os.listdir(path_to_samples) if x.endswith(".fastq.gz")]
+    global sample_dict
+    sample_dict={}
+    counter=1
+    for file in sorted(os.listdir(path_to_samples)):
+        if file.endswith('.fastq.gz'):
+            sample_dict[counter]=[file, os.path.join(path_to_samples,file)]
+            counter+=1
+    return assign_samples()
+
+def assign_samples():
+    global sample_dict
+    global conditions
+    global toclear
+    for condition in conditions:
+        samples_lines=''
+        for k,v in sample_dict.items():
+            samples_lines+=f"{' '*3}>  {k}  -  {v[0].replace('.fastq.gz','')}\n"
+        cond_as_list=[x for x in condition.split(':')]
+        operator.display(
+        text=location(condition_dict,[cond_as_list]),
+        option=f"enter all sample-numbers according to the displayed condition:\n\n{samples_lines}",
+        default=None,
+        question="enter comma separated",
+        proof='only_numbers'
+        )
+        sample_numbers=[x for x in operator.get_answer().split(',')]
+        for number in sample_numbers:
+            path='/'.join(cond_as_list[1:])
+            cond_dir=os.path.join(project,'FASTQ',path)
+            os.symlink(sample_dict[int(number)][1], os.path.join(cond_dir,sample_dict[int(number)][0]))
+            del sample_dict[int(number)]
+    return select_workflows()
+
+def select_workflows():
+    global WORKFLOWS
+    global template
+    global config_dict
+    operator.title("SWITCH ON WORKFLOWS")
+    operator.display(
+    text=get_doc("workflows"),
+    option="Enter which WORKFLOWS you would like to run\nchoose from: MAPPING, TRIMMING, QC, ANNOTATE, UCSC, PEAKS, COUNTING, DE, DEU, DAS ",
+    default=None,
+    question="Enter comma separated",
+    proof=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING","DE","DEU","DAS"]
+    )
+    for x in operator.get_answer().split(','):
+        WORKFLOWS.append(x)
+    template = load_configfile('configs/template_4.json')
+    config_dict.equip(template,conditions,WORKFLOWS)
+    config_dict = decouple(config_dict)
+    config_dict['WORKFLOWS']=','.join(WORKFLOWS)
+    return set_workflows()
+
+def select_setting_level():
+    global setting_list
+    while True:
+        d=depth(condition_dict)
+        for i in range(d-1):
+            visual, setting_list = select_id_to_set(condition_dict,i)
+            operator.display(
+            text=visual,
+            option="enter for next Level or 'select' for set selected",
+            default=None,
+            question="enter to loop through condition-level",
+            proof=["select",""]
+            )
+            if operator.get_answer() =='select':
+                return
+
+def select_tools(workflow):
+    operator.display(
+    text=json.dumps(condition_dict,indent=6),
+    option='select from these available Tools:',
+    default='\n'.join(config_dict[workflow]['valid']['TOOLS'].keys()),
+    question="enter comma separated",
+    proof=config_dict[workflow]['valid']['TOOLS'].keys()
+    )
+    dtools=config_dict[workflow]['valid']['TOOLS']
+    for i in range(len(dtools.keys())):
+        for tool in operator.get_answer().split(','):
+            if tool not in dtools.keys():
+                del config_dict[workflow]['valid']['TOOLS'][tool]
+
+def create_comparables(workflow):
+    while True:
+        operator.display(
+        text=json.dumps(condition_dict,indent=6),
+        option="enter the name of a comparison group\n\nor enter to continue",
+        default=None,
+        question="please do not use special characters",
+        proof=None
+        )
+        if operator.get_answer() == '':
+            break
+        comp_name=operator.get_answer()
+        config_dict[workflow]['valid']['COMPARABLE'][comp_name]=[[],[]]
+        operator.display(
+        text=json.dumps(condition_dict,indent=6),
+        option='select all keys for first comparison group',
+        default='\n'.join(condition_dict.get_nodes()),
+        question="enter comma separated",
+        proof=[x for x in condition_dict.get_nodes()]
+        )
+        config_dict[workflow]['valid']['COMPARABLE'][comp_name][0]=operator.get_answer()
+        operator.display(
+        text=json.dumps(condition_dict,indent=6),
+        option='select all keys for second comparison group',
+        default='\n'.join(condition_dict.get_nodes()),
+        question="enter comma separated",
+        proof=[x for x in condition_dict.get_nodes()]
+        )
+        config_dict[workflow]['valid']['COMPARABLE'][comp_name][1]=operator.get_answer()
+
+# def set_relations(cdict):
+#     cdict['REALTIONS'].append()
+
+def set_workflows():
+    global setting_list
+    global WORKFLOWS
+    # setting_list=select_id_to_set(condition_dict)
+    for workflow in WORKFLOWS:
+        operator.title(f"Make Settings for {workflow}")
+        select_setting_level()
+        if 'valid' in config_dict[workflow].keys():
+            if 'TOOLS' in config_dict[workflow]['valid'].keys():
+                select_tools(workflow)
+            if 'FEATURES' in config_dict[workflow]['valid'].keys():
+                set_features(workflow)
+            if 'COMPARABLE' in config_dict[workflow]['valid'].keys():
+                create_comparables(workflow)
+
+        for setting in setting_list:
+            switch=True
+            for set in setting:
+                cdict=config_dict[workflow]
+                for i in range(len(set)-1):
+                    last=set[i+1]
+                    cdict=cdict[set[i]]
+
+                if switch:
+                    if workflow == 'SEQUENCING':
+                        operator.display(
+                        text=location(condition_dict,setting),
+                        option=options_dict[workflow],
+                        default=None,
+                        question="enter",
+                        proof=["unpaired","paired"]
+                        )
+                        singles = cdict[last] = operator.get_answer()
+                    elif workflow == 'GENOME':
+                        operator.display(
+                        text=location(condition_dict,setting),
+                        option=options_dict[workflow],
+                        default=None,
+                        question="enter",
+                        proof=None
+                        )
+                        singles = cdict[last] = operator.get_answer()
+                    else:
+                        if 'ANNOTATION' in cdict[last].keys():
+                            # set_relations(cdict)
+                            operator. display(
+                            text=location(condition_dict,setting),
+                            option="set annotation for marked conditions",
+                            default=cdict[last]['ANNOTATION'],
+                            question="enter",
+                            proof=None
+                            )
+                            annotation = cdict[last]['ANNOTATION'] = operator.get_answer()
+                        if 'OPTIONS' in cdict[last].keys():
+                            for i in range(len(cdict[last]['OPTIONS'])):
+                                operator.display(
+                                text=location(condition_dict,setting),
+                                option=options_dict[workflow]['OPTIONS'][i],
+                                default='\n'.join(cdict[last]['OPTIONS'][i]),
+                                question="wanna change? [ y / N ]",
+                                proof=["","y","Y","N","n"]
+                                )
+                                if operator.get_answer().lower() == 'y':
+                                    for opt in cdict[last]['OPTIONS'][i]:
+                                        operator.display(
+                                        text=location(condition_dict,setting),
+                                        option=opt,
+                                        default=None,
+                                        question="enter",
+                                        proof=None
+                                        )
+                                        opt = operator.get_answer()
+                                if operator.get_answer().lower() == 'n' or operator.get_answer() == '':
+                                    continue
+                                cdict[last]['OPTIONS'][i]=operator.get_answer()
+                        options=cdict[last]['OPTIONS']
+                    switch=False
+                else:
+                    if any(x == workflow for x in ['SEQUENCING','GENOME']):
+                        cdict[last] = singles
+                    else:
+                        cdict[last]['OPTIONS']=options
+                        cdict[last]['ANNOTATION']=annotation
+    return set_cores()
+
+def set_cores():
+    operator.title("Number of Cores")
+    operator.display(
+    text=get_doc('processes'),
+    option="set number of cores",
+    default=None,
+    question="enter number",
+    proof='only_numbers'
+    )
+    config_dict['MAXTHREADS'] = operator.get_answer()
+    return end()
+
+def end():
+    global configfile
+    operator.title(f"{'*'*30}")
+    configfile = f"config_{project_name}.json"
+    operator.display(
+    text=get_doc('runsnakemake'),
+    option=f"You created \n\n    > {configfile}\n\nstart RunSnakemake with:\n\n    > python3 snakes/RunSnakemake.py -c {configfile} --directory ${{PWD}}",
+    question='press enter to quit the Guide'
+    )
+
+
+#####################
+# global variables: #
+#####################
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+cwd=os.getcwd()
+
+operator=Operator()
+toclear=0
+project_name=""
+conditions=[]
+WORKFLOWS=['GENOME','SEQUENCING']
+
+template=NestedDefaultDict()
+sample_dict=NestedDefaultDict()
+config_dict=NestedDefaultDict()
+condition_dict=NestedDefaultDict()
+
+options_dict=NestedDefaultDict()
+options_dict['COUNTING']['valid']['FEATURES'] = "set feature setting"
+options_dict['COUNTING']['OPTIONS'][0] = "set feature setting"
+options_dict['TRIMMING']['OPTIONS'][0] = "trimming options"
+options_dict['UCSC']['OPTIONS'][0] = "ucsc options"
+options_dict['PEAKS']['OPTIONS'][0] = "peaks options"
+options_dict['MAPPING']['OPTIONS'][0] = "set indexing options"
+options_dict['MAPPING']['OPTIONS'][1] = "set mapping options"
+options_dict['MAPPING']['OPTIONS'][2] = "set name extension for index"
+options_dict['DAS']['OPTIONS'][0] = "set counting options"
+options_dict['DAS']['OPTIONS'][1] = "set diego options"
+options_dict['DEU']['OPTIONS'][0] = "set counting options"
+options_dict['DEU']['OPTIONS'][1] = "set x options"
+options_dict['DE']['OPTIONS'][0] = "set counting options"
+options_dict['DE']['OPTIONS'][1] = "set x options"
+options_dict['SEQUENCING'] = "paired or unpaired?"
+options_dict['GENOME'] = "which organism?"
+
+# # to start at set_workflows()
+# WORKFLOWS=['DE']
+# project_name='tacheles'
+# project='/homes/brauerei/robin/test/getit'
+# condition_dict['tacheles']['a']
+# condition_dict['tacheles']['a']['1']
+# condition_dict['tacheles']['a']['2']
+# condition_dict['tacheles']['a']['3']
+# condition_dict['tacheles']['b']['1']
+# condition_dict['tacheles']['b']['2']
+# # condition_dict['tacheles']['b']['2']['x']
+# # condition_dict['tacheles']['b']['2']['y']
+# condition_dict['tacheles']['b']['3']
+# condition_dict['tacheles']['c']['1']
+# condition_dict['tacheles']['c']['2']
+# condition_dict['tacheles']['c']['3']
+# conditions=[pattern for pattern in condition_dict.get_condition_list()]
+# template = load_configfile('configs/template_4.json')
+# config_dict.equip(template,conditions,WORKFLOWS)
+
+########
+# main #
+########
+def main():
+
+    header='  _  _                     _       ___                     _\n'\
+    ' | \| |    ___    __ __   | |_    / __|   _ _     __ _    | |__    ___     ___\n'\
+    ' | .` |   / -_)   \ \ /   |  _|   \__ \  | ` \   / _` |   | / /   / -_)   (_-<\n'\
+    ' |_|\_|   \___|   /_\_\   _\__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/_\n'\
+    '_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|\n'\
+    ' `-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`\n'
+
+    print("\n\n\n\n")
+    for line in header.split('\n'):
+        print(f"{' '*10}{line}")
+
+    # set_workflows()
+    start()
+    # print_dict(config_dict)
+    print_json(config_dict,configfile)
 
 if __name__ == '__main__':
-
-    makelogdir('LOGS')
-    logid = scriptname+'.main: '
-    # log = setup_logger(name=scriptname, log_file='LOGS/'+scriptname+'.log', logformat='%(asctime)s %(levelname)-8s %(name)-12s %(message)s', datefmt='%m-%d %H:%M', level=knownargs.loglevel)
-    # log.addHandler(logging.StreamHandler(sys.stderr))  # streamlog
-
-    MIN_PYTHON = (3,7)
-    if sys.version_info < MIN_PYTHON:
-        log.error("This script requires Python version >= 3.7")
-        sys.exit("This script requires Python version >= 3.7")
-    # log.info(logid+'Running '+scriptname+' on '+str(knownargs.procs)+' cores')
-
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    cwd=os.getcwd()
-
-    print("\n\n\n","*"*33," NextSnakes GUIDE ","*"* 33,)
-    print("","*"*86,"\n")
-
-    try:
-        args=parseargs()
-        if args.quickmode:
-            quick=True
-            print("  > starting in quick-mode <\n")
-        else:
-            quick=False
-            print("  > starting in explanation-mode <\n")
-
-        explain("intro.txt")
-        start = conversation("Enter 'append' for expanding an existing configfile or 'new' for a new project", None)
-
-        while True:
-
-            if 'append' in start:
-
-                while True:
-                    configfile = conversation("enter the name of the existing file", None)
-                    if os.path.isfile(configfile):
-                        break
-                    else:
-                        print("Sry, didn't find such a file...")
-                config = load_configfile(os.path.abspath(configfile))
-                print("\n")
-                for key in get_path(config['SAMPLES']):
-                    print("\t> ", key)
-                print("\n")
-                appending = conversation("this are all ICS i found in the file, would you like to add more? \nwrite 'y' for yes or 'n' for no", None,['y','n'])
-
-                ICS=[]
-                if 'y' in appending:
-                    IDs = conversation("enter all ID's you want to work on", None)
-                    for id in IDs.split(","):
-                        conditions = conversation(f"now tell me all conditions for {id}", None)
-                        for condi in conditions.split(","):
-                            settings = conversation(f"and now all settings for {id}:{condi}", None)
-                            for setting in settings.split(","):
-                                ICS.append(f"{id}:{condi}:{setting}")
-
-                print("okay, let's have a look to the workflows and postprocessing analyses")
-                workflows = conversation("this are the current workflows, would you like to add more? Possible are MAPPING, TRIMMING, QC", config['WORKFLOWS'],["MAPPING","TRIMMING","QC",""])
-                postprocess = conversation("this are the current postprocess analyses, would you like to add more? Possible are DE, DEU, DAS", config['POSTPROCESSING'],["DE","DEU","DAS",""])
-
-                annotation=""
-
-                oldtodos, oldics, newconf= create_json_config(
-                configfile=configfile,
-                append="APPEND",
-                template="configs/template_2.json",
-                preprocess="",
-                workflows=workflows,
-                postprocess=postprocess,
-                ics=",".join(ICS),
-                refdir=config['REFERENCE'],
-                binaries=config['BINS'],
-                procs=config['MAXTHREADS'],
-                genomemap="",
-                genomes="",
-                genomeext="",
-                sequencing="",
-                annotation=annotation
-                )
-                break
-
-            if 'new' in start:
-
-                name = conversation("Now please type the name of your Project, it will be the name of the CONFIGFILE \nand possibly of your Project-folder", None)
-                configfile = f"config_{name}.json"
-
-                folder_content = os.listdir('../')
-                if 'FASTQ' in folder_content or 'REFERENCES' in folder_content:
-                    set_folder=conversation("It looks like you already set up your project-folder. We would therefor skip setting it up now. Enter 'n' if you want to do that anyway.", None)
-                else:
-                    explain('projectfolder.txt')
-                    while True:
-                        path_to_project = conversation("So, where should the Project-folder be created? Enter the absolute path \nlike '/home/path/to/NextSnakesProjects' ", None)
-                        if os.path.isdir(path_to_project):
-                            project = os.path.join(path_to_project, name)
-                            if os.path.isdir(project):
-                                print(f"In the directory you entered, a folder with the name {name} already exist. \nMaybe you should think about what you really want to do. If you want to work on \nan existing Project, use the 'append' function, otherwise use a different \nProject-name. Ciao!")
-                                exit()
-                            os.mkdir(project)
-                            os.mkdir(os.path.join(project,"FASTQ"))
-                            os.mkdir(os.path.join(project,"REFERENCES"))
-                            os.symlink(cwd, os.path.join(project,'snakes'))
-                            break
-                        else:
-                            print("Sry, couldn't find this directory ")
-
-                explain("ics.txt")
-                IDs = conversation("enter all ID's you want to work on", None)
-                ICS=[]
-                for id in IDs.split(","):
-                    os.mkdir(os.path.join(project,"FASTQ", id))
-                    conditions = conversation(f"now tell me all conditions for {id}", None)
-                    for condi in conditions.split(","):
-                        os.mkdir(os.path.join(project,"FASTQ", id, condi))
-                        settings = conversation(f"and now all settings for {id}:{condi}", None)
-                        for setting in settings.split(","):
-                            os.mkdir(os.path.join(project,"FASTQ", id, condi, setting))
-                            ICS.append(f"{id}:{condi}:{setting}")
-
-                explain("workflows.txt")
-                workflows = conversation("Enter which WORKFLOWS you would like to run.", None,["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING",""])
-                postprocess = conversation("Which POSTPROCESS ANALYSIS would you like to run? Possible are DE, DEU, DAS", None, ["DE","DEU","DAS",""])
-
-                print("Now you may have to be patient. We go through all settings, and you have to \n"
-                    "assign the corresponding samples by their absolute directory path. The Guide will \n"
-                    "symlink it to your 'FASTQ'-Folder.\n\n"
-                    "For that, maybe it's helpful to open another termimal, navigate to the directory \n"
-                    "your samples are stored and list them with 'readlink -f *.fastq.gz'\n")
-
-                for ics in ICS:
-                    while True:
-                        sample=conversation(f"Enter one Sample-path of {ics} or enter 'n' to go to the next ics", None)
-                        if sample=='n':
-                            break
-                        if os.path.isfile(sample):
-                            try:
-                                os.symlink(sample, os.path.join(project,'FASTQ', ics.split(':')[0], ics.split(':')[1], ics.split(':')[2], os.path.basename(sample)))
-                            except:
-                                print("hmm, an error occured.. maybe this file is already linked. try again!")
-                        else:
-                            print("Sry, couldn't find the file")
-
-                explain("genomes1.txt")
-                fasta_dict={}
-                organisms = conversation("enter all organisms you have in your analysis", None)
-                for organism in organisms.split(","):
-                    os.mkdir(os.path.join(project,"REFERENCES", organism))
-                    fasta_dict.update({organism:conversation(f"enter the basename(!) of the fa.gz file appending to {organism}", None)})
-                    print("Now you can add Genome reference files to your REFERENCES folder\n")
-                    while True:
-                        file=conversation(f"Enter one file-path you want to symlink to {organism} or enter 'n' to go to the next ics", None)
-                        if file=='n':
-                            break
-                        if os.path.isfile(file):
-                            try:
-                                os.symlink(file, os.path.join(project,'REFERENCES', organism, os.path.basename(file)))
-                            except:
-                                print("hmm, an error occured.. maybe this file is already linked. try again!")
-                        else:
-                            print("Sry, couldn't find the file")
-
-
-                annotation=""
-
-                oldtodos, oldics, newconf = create_json_config(
-                configfile = configfile,
-                append="",
-                template="configs/template_2.json",
-                preprocess="",
-                workflows=workflows,
-                postprocess=postprocess,
-                ics=",".join(ICS),
-                refdir="REFERENCES",
-                binaries="scripts",
-                procs="10",
-                genomemap=",".join([id+":organism" for id in IDs.split(",")]),
-                genomes=",".join([k+":"+v for k, v in fasta_dict.items()]),
-                genomeext="",
-                sequencing="",
-                annotation=annotation
-                )
-                break
-
-            else:
-                start = conversation("enter 'append' or 'new'", None)
-
-        # print(newconf)
-
-        if ICS:
-            explain("genomes2.txt")
-            # SOURCE
-            if len(newconf["GENOME"]) > 1:
-                rename(newconf,'SOURCE', oldics, oldtodos,
-                [f"enter the corresponding organism {list(newconf['GENOME'].keys())}", list(newconf['GENOME'].keys())]
-                )
-            else:
-                for id in newconf['SOURCE'].keys():
-                    for condition in newconf['SOURCE'][id].keys():
-                        for setting in newconf['SOURCE'][id][condition].keys():
-                            newconf['SOURCE'][id][condition][setting]=list(newconf['GENOME'].keys())[0]
-
-            # NAME
-            rename(newconf,'NAME', oldics, oldtodos,
-            ["enter the additional FASTA-extension", None]
-            )
-
-            # SEQUENCING
-            rename(newconf,'SEQUENCING', oldics, oldtodos,
-            ["enter 'paired' or 'unpaired'",["paired", "unpaired"]]
-            )
-
-            # # SAMPLES
-            # explain("samples...")
-            # for id in newconf['SAMPLES'].keys():
-            #     for condition in newconf['SAMPLES'][id].keys():
-            #         for setting in newconf['SAMPLES'][id][condition].keys():
-            #             if not newconf['SAMPLES'][id][condition][setting]:
-            #                 samples = conversation(f"I couldn't found samples for {id}:{condition}:{setting}, please type the file names", None)
-            #                 newconf['SAMPLES'][id][condition][setting]=samples.split(",")
-
-        explain("workflows2.txt")
-
-        if 'QC' in newconf['WORKFLOWS'].split(",") and ('QC' not in oldtodos or ICS):
-            rename(newconf,'QC', oldics, oldtodos,
-            ["QC-options, would you like to change them?",'OPTIONS',0, None]
-            )
-
-        if 'COUNTING' in newconf['WORKFLOWS'].split(",") and ('COUNTING' not in oldtodos or ICS):
-            rename(newconf,'COUNTING', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["COUNTING-options, would you like to change them?",'OPTIONS',0, None]
-            )
-            print("\n")
-            newconf['COUNTING']['FEATURES']=conversation("Set feature options. Which features to count (KEY) and which group they \nbelong to (VALUE), depends on whether gtf or gff is used as annotation", newconf['COUNTING']['FEATURES'], None)
-
-        if 'UCSC' in newconf['WORKFLOWS'].split(",") and ('UCSC' not in oldtodos or ICS):
-            rename(newconf,'UCSC', oldics, oldtodos,
-            ["UCSC-options, would you like to change them?",'OPTIONS',0, None]
-            )
-
-        if 'MAPPING' in newconf['WORKFLOWS'].split(",") and ('MAPPING' not in oldtodos or ICS):
-            rename(newconf,'MAPPING', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["These are the indexing options, would you like to change them?",'OPTIONS',0, None],
-            ["These are the mapper options, would you like to change them?",'OPTIONS',1, None]
-            )
-
-        if 'PEAKS' in newconf['WORKFLOWS'].split(",") and ('PEAKS' not in oldtodos or ICS):
-            rename(newconf,'PEAKS', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["specify a set of certain features to annotate here",'OPTIONS',0, None],
-            )
-
-        if 'ANNOTATE' in newconf['WORKFLOWS'].split(",") and ('ANNOTATE' not in oldtodos or ICS):
-            rename(newconf,'ANNOTATE', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["Which CLIP protocol to follow for read extension/trimming before peak calling?\nChoices are 'iCLIP' (5'enriched), 'revCLIP' (3' enriched) or 'STD' (no enrichment)",'CLIP',["iCLIP","revCLIP","STD"]],
-            )
-
-        if 'TRIMMING' in newconf['WORKFLOWS'].split(",") and ('TRIMMING' not in oldtodos or ICS):
-            rename(newconf,'TRIMMING', oldics, oldtodos,
-            ["TRIMMING-options, would you like to change them?",'OPTIONS',0, None]
-            )
-
-        explain("analysis.txt")
-
-        if 'DE' in newconf['POSTPROCESSING'].split(",") and ('DE' not in oldtodos or ICS):
-            # explain("DE...")
-            set_relations(newconf,'DE')
-            add_tools(newconf,'DE')
-            add_comparables(newconf,'DE')
-            rename(newconf,'DE', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["Counting-settings for DE-Analysis, would you like to change them?",'OPTIONS',0, None]
-            )
-
-        if 'DEU' in newconf['POSTPROCESSING'].split(",") and ('DEU' not in oldtodos or ICS):
-            # explain("DEU...")
-            set_relations(newconf,'DEU')
-            add_tools(newconf,'DEU')
-            add_comparables(newconf,'DEU')
-            rename(newconf,'DEU', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["Counting-settings for DEU-Analysis, would you like to change them?",'OPTIONS',0, None]
-            )
-
-        if 'DAS' in newconf['POSTPROCESSING'].split(",") and ('DAS' not in oldtodos or ICS):
-            # explain("DAS...")
-            set_relations(newconf,'DAS')
-            add_tools(newconf,'DAS')
-            add_comparables(newconf,'DAS')
-            rename(newconf,'DAS', oldics, oldtodos,
-            ["enter ANNOTATION file",'ANNOTATION', None],
-            ["Counting-settings for DAS-Analysis, would you like to change them?",'OPTIONS',0, None],
-            ["Analysis-options for diego for DAS-Analysis, would you like to change them?",'OPTIONS',1, None]
-            )
-
-        explain("processes.txt")
-        newconf['MAXTHREADS'] = conversation("Enter the Maximum number of parallel processes to start snakemake with", None, "only-numbers")
-
-        print_json(newconf, configfile)
-
-        explain("runsnakemake.txt")
-        print(f"\nYou created \n\n\t> {configfile}\n")
-        print(f"start RunSnakemake with:\n\n\t> python3 snakes/RunSnakemake.py -c {configfile} --directory ${{PWD}}\n")
-        print("\n")
-
-
-    except Exception:
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        tbe = tb.TracebackException(
-        exc_type, exc_value, exc_tb,
-        )
-        log.error(logid+''.join(tbe.format()))
-
-# Configurator.py ends here
+    main()
