@@ -1,35 +1,26 @@
-                                   Chapter 3
-                            > SWITCH ON WORKFLOWS  <
-
 Fine, we have now established the basic structure of your project. In the next
-step you have to determine which WORKFLOWS you want to run. For understanding,
-NextSnakes differentiated betwween WORKFLOWS and POSTPROCESSING analyses.
-Later you have a few more options at the POSTPROCESSING steps but for now it's
-enough just to know that.
+step you have to determine which WORKFLOWS you want to run.
 
-Accordingly in the CONFIGFILE you will find two dictionary keys at the top of
-the file. Here you can switch on workflows by entering them here. A specific
-order is not needed.
+Accordingly in the CONFIGFILE you will find the WORKFLOWS dictionary key at the
+top of the file. Here you can switch on workflows by entering them here.
+A specific order is not needed.
 for example, it can look like this:
 
-                    "WORKFLOWS" :       "QC,TRIMMING,MAPPING",
-                    "POSTPROCESSING" :  "DE",
+                    "WORKFLOWS" :       "QC,TRIMMING,MAPPING,DE,DTU",
 
-That is the meaning of the available WORKFLOWS and POSTPROCESSINGs:
+For the most of the workflows several tools are available. We will choose them
+in the next step.
 
- > QC         Quality Control
- > TRIMMING   Trimming
- > MAPPING    Mapping (with star mapper)
- > ANNOTATE
- > COUNTING
- > UCSC
- > PEAKS
+There are some postprocessing workflows:
 
  > DE         Differential Expression analysis
  > DEU        Differential Exon-Usage analysis
  > DAS        Differential Alternative Splicing analysis
+ > DTU        Differential Transcript Usage
 
 In addition to these key-value pairs the CONFIGFILE will contain a seperate
 section for each of the specified WORKFLOWS. Please note, that we go through
 these detailed settings later. Now you just determine, which section will be
 prepared.
+
+these workflows are at the moment available:

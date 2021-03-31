@@ -58,7 +58,20 @@ class NestedDefaultDict(defaultdict):
             else:
                 yield '-'.join(path)
 
-class Operator():
+class PROJECT():
+    def __init__(self):
+        self.name = ""
+        self.path = ""
+        self.cores = ""
+        self.configDict = NestedDefaultDict()
+        self.workflowsDict =  NestedDefaultDict()
+        self.conditionDict = NestedDefaultDict()
+        self.sampleDict = NestedDefaultDict()
+        self.settingsList = []
+        self.settingsDict = NestedDefaultDict()
+        self.gitLink = ""
+
+class OPERATOR():
     def __init__(self):
         self.text=""
         self.option=""
@@ -72,13 +85,6 @@ class Operator():
         os.system(f'echo -e "\e[{number}A\03\c"')
     def get_answer(self):
         return str(self.answer)
-    def complete(text, state):
-        return (glob.glob(text+'*')+[None])[state]
-
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: complete")
-    readline.set_completer(complete)
-    
     def proof_input(self, proof=None):
         allowed_characters=['a','b','c','d','e','f','g','h','i','j','k','l','m','n',
         'o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G',
@@ -142,8 +148,47 @@ class Operator():
                 print(f" {line}");toclear+=1
         self.proof_input(proof);toclear+=1
 
+def complete(text, state):
+    return (glob.glob(text+'*')+[None])[state]
+
 def print_dict(dict, indent=6):
     print(json.dumps(dict, indent=indent))
+
+def getFromDict(dataDict, mapList):
+    for k in mapList: dataDict = dataDict[k]
+    return dataDict
+
+def setInDict(dataDict, maplist, value, keylist=None):
+    if keylist:
+        maplist=maplist+keylist
+    first, rest = maplist[0], maplist[1:]
+    if rest:
+        try:
+            if not isinstance(dataDict[first], dict):
+                dataDict[first] = {}
+        except KeyError:
+            dataDict[first] = {}
+        setInDict(dataDict[first], rest, value)
+    else:
+        try:
+            if isinstance(dataDict[first], list):
+                dataDict[first].append(value)
+            else:
+                dataDict[first] = value
+        except:
+            dataDict[first] = value
+
+def add_setting(setting_list,key_list,value):
+    global project
+    d = project.conditionDict
+    print('setting:'+str(setting_list))
+    for part in setting_list:
+        part = part + key_list
+        print('part: '+str(part))
+        for path in part:
+            d = d[path]
+        d = value
+    print_dict(project.conditionDict)
 
 def create_sample_dirs(d,dir):
     for k,v in d.items():
@@ -162,11 +207,11 @@ def decouple(d):
     return json.loads(string)
 
 def select_id_to_set(cdict,i,indent=6):
+    global project
     text=json.dumps(cdict, indent=indent)
     d = depth(cdict)
     out=""
     path=[]
-    setting_list=[]
     reminder=''
     counter=0
     for line in text.split('\n'):
@@ -180,19 +225,19 @@ def select_id_to_set(cdict,i,indent=6):
             if reminder != key:
                 counter+=1
                 reminder = key
-                setting_list.append([])
+                project.settingsList.append([])
         elif level<i and '{}' in line:
             counter +=1
-            setting_list.append([])
+            project.settingsList.append([])
         if '{}' in line:
             if ',' in line:
                 out+= f"{line}{' '*(14-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}\n"
             else:
                 out+= f"{line}{' '*(15-len(key) + indent*(d-2)-indent*level)} <-{' '*((counter+1)%2)*2}  {counter}\n"
-            setting_list[-1].append(path)
+            project.settingsList[-1].append(path)
         else:
             out+=line+'\n'
-    return out,setting_list
+    return out
 
 def get_doc(filename):
     path = os.path.join("docs/guide",f"{filename}.txt")
@@ -245,10 +290,10 @@ def print_dict_pointer(dict,path,copy,indent=6):
                 if route[level-1] == 'step':
                     if copy and copy != ['']:
                         out+=f"{line}    <-\n"
-                        option=f"enter new ID's \n\nor copy {copy} with 'cp'"
+                        option=f"enter ID's on condition level comma separated \n\nor copy {copy} with 'cp'"
                     else:
                         out+=f"{line}    <-\n"
-                        option="enter new ID's"
+                        option="enter ID's on conditions comma separated "
             else:
                 out+=line+'\n'
         else:
@@ -286,12 +331,6 @@ def create_condition_dict(subtree,leafes,path=[],tree=None):
     if len(path)>0:
         path.pop()
     return
-def print_json(paramdict,ofn):
-    global project
-    with open(os.path.join(project,ofn),'w') as jsonout:
-        print(json.dumps(paramdict,indent=4),file=jsonout)
-
-
 
 
 
@@ -300,11 +339,16 @@ def print_json(paramdict,ofn):
 ##########################
 
 conversation_dict={
-"1":"new or append",
-"2":"create project-folder",
-"3":"select samples",
-"4":"choose workflows"
-}
+    "0":"expand the existing project",
+    "1":"create a new project",
+    "2":"set project-folder (name and path)",
+    "3":"set conditions",
+    "4":"set samples",
+    "5":"set workflows",
+    "6":"set settings of specific workflows",
+    "7":"set number of cores",
+    "8":"print config file"
+    }
 
 def outbreak():
     global conversation_dict
@@ -317,45 +361,52 @@ def outbreak():
     proof="only_numbers"
     )
     step = operator.get_answer()
+    if step == '0':
+        start()
     if step == '1':
         start()
     if step == '2':
         create_project()
     if step == '3':
-        add_samples()
+        create_experiment()
     if step == '4':
+        add_samples()
+    if step == '5':
         select_workflows()
+    if step == '6':
+        set_workflows()
+    if step == '7':
+        set_cores()
+    if step == '8':
+        end()
 
 def start():
     operator.title("INTRO")
     operator.display(
     text=get_doc("intro"),
-    option="Enter 'append' for expanding an existing configfile or 'new' for a new project",
+    option="Enter 'expand' for expanding an existing configfile or 'new' for a new project",
     default=None,
-    question="enter 'new' or 'append'",
-    proof=['new','append']
+    question="enter 'new' or 'expand'",
+    proof=['new','expand']
     )
     if operator.get_answer() == 'new':
-        # if any(x in os.listdir('../') for x in ['FASTQ','GENOMES']):
-        #     return FOLDERERROR
-        # else:
-        #     return PNAME
         return create_project()
-    if operator.get_answer() == 'append':
-        return append()
+    if operator.get_answer() == 'expand':
+        return expand()
 
-def intro2():
+def project_error():
+    global project
     operator.title("ERROR")
     operator.display(
-    text=f"In the directory you entered, a folder with the name '{project_name}' already exist. \nSo please say again: do you want to create a new project or append an existing?",
-    option="Enter 'append' for expanding an existing configfile or 'new' for a new project",
-    question="enter 'new' or 'append'",
-    proof=['new','append']
+    text=f"In the directory you entered, a folder with the name '{project.name}' already exist. \nSo please say again: do you want to create a new project or expand an existing?",
+    option="Enter 'expand' for expanding an existing configfile or 'new' for a new project",
+    question="enter 'new' or 'expand'",
+    proof=['new','expand']
     )
     if operator.get_answer() == 'new':
         return create_project()
-    if operator.get_answer() == 'append':
-        return append()
+    if operator.get_answer() == 'expand':
+        return expand()
 
 def folder_error():
     operator.title("ERROR")
@@ -365,25 +416,13 @@ def folder_error():
     question="[ n / Y ]"
     )
     if operator.get_answer() == 'n':
-        return project_name()
+        return project.name()
     if operator.get_answer() == 'y':
         return end()
 
 def create_project():
-    operator.title("CREATE PROJECT-FOLDER")
-    operator.display(
-    text=get_doc("projectfolder"),
-    option="Enter the name of your Project",
-    default=None,
-    question="please don't use special characters",
-    proof=None
-    )
-    global project_name
-    project_name = operator.get_answer()
-    return project_path()
-
-def project_path():
     global project
+    operator.title("CREATE PROJECT-FOLDER")
     switch=False
     while True:
         if switch:
@@ -393,20 +432,16 @@ def project_path():
         operator.display(
         text=get_doc("projectfolder"),
         option=ques,
-        question="enter it like  /home/path/to/NextSnakesProjects",
+        question="enter it like  /path/to/MyNewProject",
         default=None,
         proof=None
         )
-        global project
-        path_to_project = operator.get_answer()
-        if os.path.isdir(path_to_project):
-            project = os.path.join(path_to_project,project_name)
-            if os.path.isdir(project):
-                return intro2()
-            os.mkdir(project)
-            os.mkdir(os.path.join(project,"FASTQ"))
-            os.mkdir(os.path.join(project,"GENOMES"))
-            os.symlink(cwd, os.path.join(project,'snakes'))
+        project.name = os.path.basename(operator.get_answer())
+        project.path = operator.get_answer()
+        if os.path.isdir(os.path.dirname(project.path)):
+            proof = os.path.join(project.path, project.name)
+            if os.path.isdir(proof):
+                return project_error()
             break
         else:
             switch=True
@@ -422,23 +457,21 @@ def condition_structure():
     return create_experiment()
 
 def create_experiment():
-    create_condition_dict(condition_dict,[project_name])
-    global conditions
-    conditions=[pattern for pattern in condition_dict.get_condition_list()]
-    path_list=[x for x in project.split('/') if x]
-    path_list.append('FASTQ')
-    create_sample_dirs(condition_dict[project_name],path_list)
+    global project
+    create_condition_dict(project.conditionDict,[project.name])
+    project.settingsDict = json.loads(json.dumps(project.conditionDict))
     return add_samples()
 
 def add_samples():
+    global project
     switch=False
+    path_to_samples= []
     operator.title("ADD SAMPLES")
     while True:
         if switch:
-            ques="Enter the absolute path where your samples are stored\nsorry, couldn't find this directory"
+            ques=f"Sorry, couldn't find {path_to_samples}\n\nEnter an absolute path where samples are stored"
         else:
-            ques="Enter the absolute path "
-        switch=True
+            ques="Enter an absolute path \n\nor press enter to continue"
         operator.display(
         text=get_doc("samples"),
         option=ques,
@@ -446,97 +479,142 @@ def add_samples():
         question="enter like  /home/path/to/Samples",
         proof=None
         )
-        path_to_samples = operator.get_answer()
-        if os.path.isdir(path_to_samples):
+        if operator.get_answer() == '' and path_to_samples :
             break
-    samples = [x for x in os.listdir(path_to_samples) if x.endswith(".fastq.gz")]
-    global sample_dict
-    sample_dict={}
+        switch=True
+        if os.path.isdir(operator.get_answer()):
+            path_to_samples.append(operator.get_answer())
+            switch = False
     counter=1
-    for file in sorted(os.listdir(path_to_samples)):
-        if file.endswith('.fastq.gz'):
-            sample_dict[counter]=[file, os.path.join(path_to_samples,file)]
-            counter+=1
+    for p in path_to_samples:
+        for file in sorted(os.listdir(p)):
+            if file.endswith('.fastq.gz'):
+                project.sampleDict[str(counter)]=[file, os.path.join(p,file)]
+                counter+=1
     return assign_samples()
 
 def assign_samples():
-    global sample_dict
-    global conditions
     global toclear
+    conditions=[pattern for pattern in project.conditionDict.get_condition_list()]
     for condition in conditions:
         samples_lines=''
-        for k,v in sample_dict.items():
+        for k,v in project.sampleDict.items():
             samples_lines+=f"{' '*3}>  {k}  -  {v[0].replace('.fastq.gz','')}\n"
         cond_as_list=[x for x in condition.split(':')]
         operator.display(
-        text=location(condition_dict,[cond_as_list]),
+        text=location(project.conditionDict,[cond_as_list]),
         option=f"enter all sample-numbers according to the displayed condition:\n\n{samples_lines}",
         default=None,
         question="enter comma separated",
         proof='only_numbers'
         )
-        sample_numbers=[x for x in operator.get_answer().split(',')]
-        for number in sample_numbers:
-            path='/'.join(cond_as_list[1:])
-            cond_dir=os.path.join(project,'FASTQ',path)
-            os.symlink(sample_dict[int(number)][1], os.path.join(cond_dir,sample_dict[int(number)][0]))
-            del sample_dict[int(number)]
+        for s in project.sampleDict.keys():
+            if s in operator.get_answer():
+                project.sampleDict[s].append(condition)
     return select_workflows()
 
 def select_workflows():
-    global WORKFLOWS
-    global template
-    global config_dict
-    operator.title("SWITCH ON WORKFLOWS")
+    global project
+    possible_workflows = list(project.configDict.keys())
+    for e in ["WORKFLOWS","BINS","MAXTHREADS","SETTINGS"]:
+        possible_workflows.remove(e)
+    operator.title("SELECT WORKFLOWS")
     operator.display(
-    text=get_doc("workflows"),
-    option="Enter which WORKFLOWS you would like to run\nchoose from: MAPPING, TRIMMING, QC, ANNOTATE, UCSC, PEAKS, COUNTING, DE, DEU, DAS ",
+    text=get_doc("workflows")+'\n'+'\n'.join(possible_workflows),
+    option="Enter which WORKFLOWS you would like to run",
     default=None,
     question="Enter comma separated",
-    proof=["MAPPING", "TRIMMING", "QC","ANNOTATE","UCSC","PEAKS","COUNTING","DE","DEU","DAS"]
+    proof=possible_workflows
     )
-    for x in operator.get_answer().split(','):
-        WORKFLOWS.append(x)
-    template = load_configfile('configs/template_4.json')
-    config_dict.equip(template,conditions,WORKFLOWS)
-    config_dict = decouple(config_dict)
-    config_dict['WORKFLOWS']=','.join(WORKFLOWS)
-    return set_workflows()
+    for work in operator.get_answer().split(','):
+        project.workflowsDict[work]
+    return set_settings()
 
 def select_setting_level():
-    global setting_list
+    global project
     while True:
-        d=depth(condition_dict)
+        d=depth(project.conditionDict)
         for i in range(d-1):
-            visual, setting_list = select_id_to_set(condition_dict,i)
+            project.settingsList = []
             operator.display(
-            text=visual,
-            option="enter for next Level or 'select' for set selected",
+            text= select_id_to_set(project.conditionDict,i),
+            option="enter to loop through the possible condition-settings\nyou will set all conditions with the same number at once afterwards \n\nenter'select' for your setting",
             default=None,
-            question="enter to loop through condition-level",
+            question="",
             proof=["select",""]
             )
             if operator.get_answer() =='select':
                 return
 
-def select_tools(workflow):
+def set_settings():
     operator.display(
-    text=json.dumps(condition_dict,indent=6),
-    option='select from these available Tools:',
-    default='\n'.join(config_dict[workflow]['valid']['TOOLS'].keys()),
-    question="enter comma separated",
-    proof=config_dict[workflow]['valid']['TOOLS'].keys()
+    text=get_doc("settings"),
+    option='enter to continue',
     )
-    dtools=config_dict[workflow]['valid']['TOOLS']
-    for i in range(len(dtools.keys())):
-        for tool in operator.get_answer().split(','):
-            if tool not in dtools.keys():
-                del config_dict[workflow]['valid']['TOOLS'][tool]
+    return set_settings2()
+
+def set_settings2():
+    global project
+    select_setting_level()
+    counter=1
+    for setting in project.settingsList:
+        for maplist in setting:
+            for key in ["SAMPLES","TYPES","GROUPS","BATCHES"]:
+                setInDict(project.settingsDict,maplist,[],[key])
+        for key in ['TYPES','SEQUENCING','REFERENCE','INDEX','PREFIX']:
+            if key == 'SEQUENCING':
+                p = ["unpaired","paired"]
+            else:
+                p = None
+            operator.display(
+            text=location(project.conditionDict,setting),
+            option=options_dict[key]+"\n\nor enter to skip",
+            default='\n'.join(project.configDict["SETTINGS"][key]),
+            proof = p
+            )
+            for maplist in setting:
+                for k,v in project.sampleDict.items():
+                    if ':'.join(maplist) == v[2]:
+                        setInDict(project.settingsDict,maplist+[key],operator.get_answer())
+                        # setInDict(project.settingsDict,maplist+["GROUPS"], ':'.join(maplist))
+                        # setInDict(project.settingsDict,maplist+["BATCHES"], counter)
+        for key in ['GTF', 'GFF']:
+            operator.display(
+            text=location(project.conditionDict,setting),
+            option=options_dict['ANNOTATION'][key]+"\nor enter to skip",
+            default='\n'.join(project.configDict["SETTINGS"]['ANNOTATION'][key]),
+            proof = p
+            )
+            for maplist in setting:
+                setInDict(project.settingsDict,maplist+['ANNOTATION',key],operator.get_answer())
+        counter+=1
+    return set_workflows()
+
+def select_tools(workflow):
+    global project
+    operator.display(
+    text=json.dumps(project.conditionDict,indent=6),
+    option='select from these available Tools:',
+    default='\n'.join(project.configDict[workflow]['TOOLS'].keys()),
+    question="enter comma separated",
+    proof=project.configDict[workflow]['TOOLS'].keys()
+    )
+    for tool in operator.get_answer().split(','):
+        project.workflowsDict[workflow]['TOOLS'][tool] = project.configDict[workflow]["TOOLS"][tool]
+
 
 def create_comparables(workflow):
+    operator.display(
+    text=get_doc("comparables"),
+    option='enter to continue',
+    )
+    return create_comparables2(workflow)
+
+def create_comparables2(workflow):
+    global project
     while True:
         operator.display(
-        text=json.dumps(condition_dict,indent=6),
+        text=json.dumps(project.conditionDict,indent=6),
         option="enter the name of a comparison group\n\nor enter to continue",
         default=None,
         question="please do not use special characters",
@@ -545,113 +623,65 @@ def create_comparables(workflow):
         if operator.get_answer() == '':
             break
         comp_name=operator.get_answer()
-        config_dict[workflow]['valid']['COMPARABLE'][comp_name]=[[],[]]
-        operator.display(
-        text=json.dumps(condition_dict,indent=6),
-        option='select all keys for first comparison group',
-        default='\n'.join(condition_dict.get_nodes()),
-        question="enter comma separated",
-        proof=[x for x in condition_dict.get_nodes()]
-        )
-        config_dict[workflow]['valid']['COMPARABLE'][comp_name][0]=operator.get_answer()
-        operator.display(
-        text=json.dumps(condition_dict,indent=6),
-        option='select all keys for second comparison group',
-        default='\n'.join(condition_dict.get_nodes()),
-        question="enter comma separated",
-        proof=[x for x in condition_dict.get_nodes()]
-        )
-        config_dict[workflow]['valid']['COMPARABLE'][comp_name][1]=operator.get_answer()
-
-# def set_relations(cdict):
-#     cdict['REALTIONS'].append()
+        project.workflowsDict[workflow]['COMPARABLE'][comp_name]=[[],[]]
+        for i in [0,1]:
+            operator.display(
+            text=json.dumps(project.conditionDict,indent=6),
+            option=f'select all keys for comparison group {i+1}',
+            default='\n'.join(project.conditionDict.get_nodes()),
+            question="enter comma separated",
+            proof=[x for x in project.conditionDict.get_nodes()]
+            )
+            project.workflowsDict[workflow]['COMPARABLE'][comp_name][i]=operator.get_answer()
 
 def set_workflows():
-    global setting_list
-    global WORKFLOWS
-    # setting_list=select_id_to_set(condition_dict)
+    global options_dict
+    global project
+    WORKFLOWS = project.workflowsDict.keys()
+    # project.settingsList=select_id_to_set(project.conditionDict)
     for workflow in WORKFLOWS:
+        k = list(project.conditionDict.keys())[0]
+        project.workflowsDict[workflow][k] = json.loads(json.dumps(project.conditionDict[k]))
         operator.title(f"Make Settings for {workflow}")
-        select_setting_level()
-        if 'valid' in config_dict[workflow].keys():
-            if 'TOOLS' in config_dict[workflow]['valid'].keys():
-                select_tools(workflow)
-            if 'FEATURES' in config_dict[workflow]['valid'].keys():
-                set_features(workflow)
-            if 'COMPARABLE' in config_dict[workflow]['valid'].keys():
-                create_comparables(workflow)
+        if 'TOOLS' in project.configDict[workflow].keys():
+            select_tools(workflow)
 
-        for setting in setting_list:
-            switch=True
-            for set in setting:
-                cdict=config_dict[workflow]
-                for i in range(len(set)-1):
-                    last=set[i+1]
-                    cdict=cdict[set[i]]
-
-                if switch:
-                    if workflow == 'SEQUENCING':
-                        operator.display(
-                        text=location(condition_dict,setting),
-                        option=options_dict[workflow],
-                        default=None,
-                        question="enter",
-                        proof=["unpaired","paired"]
-                        )
-                        singles = cdict[last] = operator.get_answer()
-                    elif workflow == 'GENOME':
-                        operator.display(
-                        text=location(condition_dict,setting),
-                        option=options_dict[workflow],
-                        default=None,
-                        question="enter",
-                        proof=None
-                        )
-                        singles = cdict[last] = operator.get_answer()
-                    else:
-                        if 'ANNOTATION' in cdict[last].keys():
-                            # set_relations(cdict)
-                            operator. display(
-                            text=location(condition_dict,setting),
-                            option="set annotation for marked conditions",
-                            default=cdict[last]['ANNOTATION'],
+        for setting in project.settingsList:
+            for tool in project.workflowsDict[workflow]['TOOLS'].keys():
+                for maplist in setting:
+                    setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],[])
+                for i in range(len(project.configDict[workflow][tool]['OPTIONS'])):
+                    operator.display(
+                    text=location(project.conditionDict,setting),
+                    option=options_dict[workflow]['OPTIONS'][i],
+                    default=f"Settings for {tool}\n\n"+'\n'.join(project.configDict[workflow][tool]['OPTIONS'][i]),
+                    question="wanna change? [ y / N ]",
+                    proof=["","y","Y","N","n"]
+                    )
+                    if operator.get_answer().lower() == 'y':
+                        optsdict = NestedDefaultDict()
+                        for opt in project.configDict[workflow][tool]['OPTIONS'][i]:
+                            operator.display(
+                            text=location(project.conditionDict,setting),
+                            option=opt,
+                            default=None,
                             question="enter",
                             proof=None
                             )
-                            annotation = cdict[last]['ANNOTATION'] = operator.get_answer()
-                        if 'OPTIONS' in cdict[last].keys():
-                            for i in range(len(cdict[last]['OPTIONS'])):
-                                operator.display(
-                                text=location(condition_dict,setting),
-                                option=options_dict[workflow]['OPTIONS'][i],
-                                default='\n'.join(cdict[last]['OPTIONS'][i]),
-                                question="wanna change? [ y / N ]",
-                                proof=["","y","Y","N","n"]
-                                )
-                                if operator.get_answer().lower() == 'y':
-                                    for opt in cdict[last]['OPTIONS'][i]:
-                                        operator.display(
-                                        text=location(condition_dict,setting),
-                                        option=opt,
-                                        default=None,
-                                        question="enter",
-                                        proof=None
-                                        )
-                                        opt = operator.get_answer()
-                                if operator.get_answer().lower() == 'n' or operator.get_answer() == '':
-                                    continue
-                                cdict[last]['OPTIONS'][i]=operator.get_answer()
-                        options=cdict[last]['OPTIONS']
-                    switch=False
-                else:
-                    if any(x == workflow for x in ['SEQUENCING','GENOME']):
-                        cdict[last] = singles
-                    else:
-                        cdict[last]['OPTIONS']=options
-                        cdict[last]['ANNOTATION']=annotation
+                            optsdict[opt] = operator.get_answer()
+                        for maplist in setting:
+                            setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],optsdict)
+                    if operator.get_answer().lower() == 'n' or operator.get_answer() == '':
+                        for maplist in setting:
+                            setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],project.configDict[workflow][tool]['OPTIONS'][i])
+                        continue
+
+        if 'COMPARABLE' in project.configDict[workflow].keys():
+            create_comparables(workflow)
     return set_cores()
 
 def set_cores():
+    global projects
     operator.title("Number of Cores")
     operator.display(
     text=get_doc('processes'),
@@ -660,40 +690,121 @@ def set_cores():
     question="enter number",
     proof='only_numbers'
     )
-    config_dict['MAXTHREADS'] = operator.get_answer()
+    project.cores = str(operator.get_answer())
     return end()
 
 def end():
+    global project
     global configfile
+
+    # print(project.path)
+    # print_dict(project.conditionDict)
+    # print_dict(project.workflowsDict)
+    # print_dict(project.settingsDict)
+    # print_dict(project.sampleDict)
+    # print(str(project.settingsList))
+    # input()
+
+    final_dict = NestedDefaultDict()
+    # create Project Folder
+    os.mkdir(project.path)
+    fastq = os.path.join(project.path,"FASTQ")
+    gen = os.path.join(project.path,"GENOMES")
+    os.mkdir(fastq)
+    os.mkdir(gen)
+    os.symlink(cwd, os.path.join(project.path,'nextsnakes'))
+
+    # LINK samples into FASTQ and insert samplenames in dict
+    for k,v in project.sampleDict.items():
+        samplename = v[0]
+        origin = v[1]
+        condition = v[2]
+        cond_as_list=[x for x in condition.split(':')]
+        os.chdir(fastq)
+
+        for dir in cond_as_list:
+            if not os.path.exists(os.path.join(dir)):
+                os.mkdir(os.path.join(dir))
+            os.chdir(os.path.join(dir))
+        path='/'.join(cond_as_list)
+        cond_dir=os.path.join(fastq,path)
+        os.symlink(origin, os.path.join(cond_dir,samplename))
+        setInDict(project.settingsDict,cond_as_list+["SAMPLES"],samplename)
+
+
+
+    # link reference and annotation and insert in dict
+    for setting in project.settingsList:
+        for condition in setting:
+
+            ref = getFromDict(project.settingsDict,condition + ['REFERENCE'])
+            gtf = getFromDict(project.settingsDict,condition + ['ANNOTATION','GTF'])
+            gff = getFromDict(project.settingsDict,condition + ['ANNOTATION','GFF'])
+            if os.path.isfile(ref):
+                if not os.path.exists(os.path.join(gen,os.path.basename(ref))):
+                    os.symlink(ref, os.path.join(gen,os.path.basename(ref)))
+                f = os.path.join(gen,os.path.basename(ref))
+                rel = os.path.os.path.relpath(f, start=project.path)
+                setInDict(project.settingsDict,condition+ ['REFERENCE'],rel)
+            else:
+                print("reference path is not correct, could not symlink, please do by hand")
+                setInDict(project.settingsDict,condition+ ['REFERENCE'],"EMPTY")
+            if os.path.isfile(gtf):
+                if not os.path.exists(os.path.join(gen,os.path.basename(gtf))):
+                    os.symlink(ref, os.path.join(gen,os.path.basename(gtf)))
+                f = os.path.join(gen,os.path.basename(gtf))
+                rel = os.path.os.path.relpath(f, start=project.path)
+                setInDict(project.settingsDict,condition+['ANNOTATION','GTF'],rel)
+            else:
+                print("GTF path is not correct, could not symlink, please do by hand")
+                setInDict(project.settingsDict,condition+['ANNOTATION','GTF'],"EMPTY")
+            if os.path.isfile(gff):
+                if not os.path.exists(os.path.join(gen,os.path.basename(gff))):
+                    os.symlink(ref, os.path.join(gen,os.path.basename(gff)))
+                f = os.path.join(gen,os.path.basename(gff))
+                rel = os.path.os.path.relpath(f, start=project.path)
+                setInDict(project.settingsDict,condition+['ANNOTATION','GFF'], rel)
+            else:
+                print("GFF path is not correct, could not symlink, please do by hand")
+                setInDict(project.settingsDict,condition+['ANNOTATION','GFF'], "EMPTY")
+
+
+    final_dict["WORKFLOWS"] = ','.join(project.workflowsDict.keys())
+    final_dict["BINS"] = project.configDict["BINS"]
+    final_dict["MAXTHREADS"] = project.cores
+    final_dict["SETTINGS"] = project.settingsDict
+    final_dict.update(project.workflowsDict)
+
+    print_dict(final_dict)
+    print(20*'\n')
+
+    os.chdir(cwd)
     operator.title(f"{'*'*30}")
-    configfile = f"config_{project_name}.json"
+    configfile = f"config_{project.name}.json"
     operator.display(
     text=get_doc('runsnakemake'),
-    option=f"You created \n\n    > {configfile}\n\nstart RunSnakemake with:\n\n    > python3 snakes/RunSnakemake.py -c {configfile} --directory ${{PWD}}",
+    option=f"You created \n\n    > {configfile}\n\nstart RunSnakemake with:\n\n    > python3 nextsnakes/RunSnakemake.py -c {configfile} --directory ${{PWD}}",
     question='press enter to quit the Guide'
     )
+    return finalize_project(final_dict)
 
+def finalize_project(final_dict):
+    with open(os.path.join(project.path,f"config_{project.name}.json"),'w') as jsonout:
+        print(json.dumps(final_dict,indent=4),file=jsonout)
 
 #####################
 # global variables: #
 #####################
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-cwd=os.getcwd()
-
-operator=Operator()
-toclear=0
-project_name=""
-conditions=[]
-WORKFLOWS=['GENOME','SEQUENCING']
-
-template=NestedDefaultDict()
-sample_dict=NestedDefaultDict()
-config_dict=NestedDefaultDict()
-condition_dict=NestedDefaultDict()
-
 options_dict=NestedDefaultDict()
-options_dict['COUNTING']['valid']['FEATURES'] = "set feature setting"
+options_dict['TYPES'] = 'set types'
+options_dict['SEQUENCING'] = 'set seq'
+options_dict['REFERENCE'] = 'set the path to the Reference'
+options_dict['INDEX'] = 'set index'
+options_dict['PREFIX'] = "set prefix"
+options_dict['ANNOTATION']['GTF'] = "set path to GTF"
+options_dict['ANNOTATION']['GFF'] = "set path to GFF"
+options_dict['COUNTING']['FEATURES'] = "set feature setting"
 options_dict['COUNTING']['OPTIONS'][0] = "set feature setting"
 options_dict['TRIMMING']['OPTIONS'][0] = "trimming options"
 options_dict['UCSC']['OPTIONS'][0] = "ucsc options"
@@ -710,25 +821,17 @@ options_dict['DE']['OPTIONS'][1] = "set x options"
 options_dict['SEQUENCING'] = "paired or unpaired?"
 options_dict['GENOME'] = "which organism?"
 
-# # to start at set_workflows()
-# WORKFLOWS=['DE']
-# project_name='tacheles'
-# project='/homes/brauerei/robin/test/getit'
-# condition_dict['tacheles']['a']
-# condition_dict['tacheles']['a']['1']
-# condition_dict['tacheles']['a']['2']
-# condition_dict['tacheles']['a']['3']
-# condition_dict['tacheles']['b']['1']
-# condition_dict['tacheles']['b']['2']
-# # condition_dict['tacheles']['b']['2']['x']
-# # condition_dict['tacheles']['b']['2']['y']
-# condition_dict['tacheles']['b']['3']
-# condition_dict['tacheles']['c']['1']
-# condition_dict['tacheles']['c']['2']
-# condition_dict['tacheles']['c']['3']
-# conditions=[pattern for pattern in condition_dict.get_condition_list()]
-# template = load_configfile('configs/template_4.json')
-# config_dict.equip(template,conditions,WORKFLOWS)
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+cwd=os.getcwd()
+
+conditions=NestedDefaultDict()
+
+toclear=0
+operator = OPERATOR()
+project = PROJECT()
+project.configDict = load_configfile("configs/template_base.json")
+project.gitLink = "git@github.com:jfallmann/NextSnakes.git"
 
 ########
 # main #
@@ -738,18 +841,17 @@ def main():
     header='  _  _                     _       ___                     _\n'\
     ' | \| |    ___    __ __   | |_    / __|   _ _     __ _    | |__    ___     ___\n'\
     ' | .` |   / -_)   \ \ /   |  _|   \__ \  | ` \   / _` |   | / /   / -_)   (_-<\n'\
-    ' |_|\_|   \___|   /_\_\   _\__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/_\n'\
-    '_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|\n'\
-    ' `-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`"`-0-0-`\n'
+    ' |_|\_|   \___|   /_\_\   _\__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/_\n'
 
-    print("\n\n\n\n")
+    print("\n\n")
     for line in header.split('\n'):
         print(f"{' '*10}{line}")
 
-    # set_workflows()
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: menu-complete")
+    readline.set_completer(complete)
+
     start()
-    # print_dict(config_dict)
-    print_json(config_dict,configfile)
 
 if __name__ == '__main__':
     main()
