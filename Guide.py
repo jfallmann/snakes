@@ -63,13 +63,13 @@ class PROJECT():
         self.name = ""
         self.path = ""
         self.cores = ""
+        self.gitLink = ""
         self.configDict = NestedDefaultDict()
         self.workflowsDict =  NestedDefaultDict()
         self.conditionDict = NestedDefaultDict()
         self.sampleDict = NestedDefaultDict()
-        self.settingsList = []
         self.settingsDict = NestedDefaultDict()
-        self.gitLink = ""
+        self.settingsList = []
 
 class OPERATOR():
     def __init__(self):
@@ -85,14 +85,17 @@ class OPERATOR():
         os.system(f'echo -e "\e[{number}A\03\c"')
     def get_answer(self):
         return str(self.answer)
-    def proof_input(self, proof=None):
+    def proof_input(self, proof=None, spec=None):
         allowed_characters=['a','b','c','d','e','f','g','h','i','j','k','l','m','n',
         'o','p','q','r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G',
         'H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
-        '1','2','3','4','5','6','7','8','9','0','(',')','_','-',',','.',':','/']
+        '1','2','3','4','5','6','7','8','9','0','(',')','_','-',',','.',':','/',' ']
         while True:
             global toclear
-            a = input(" >>> ").strip().replace(" ","")
+            if spec:
+                a = rlinput(" >>> ", spec)
+            else:
+                a = input(" >>> ").strip().replace(" ","")
             if a == "outbreak":
                 toclear+=1
                 outbreak()
@@ -122,7 +125,7 @@ class OPERATOR():
         self.clear(toclear)
         print(f"\n{' '*(50-int((len(text)+4)/2))}> {text} <\n\n")
         toclear = 1
-    def display(self, text=None, option=None, default=None, question=None, proof=None):
+    def display(self, text=None, option=None, default=None, question=None, proof=None, spec=None):
         global toclear
         self.clear(toclear)
         toclear=1
@@ -146,10 +149,34 @@ class OPERATOR():
         if question:
             for line in question.split('\n'):
                 print(f" {line}");toclear+=1
-        self.proof_input(proof);toclear+=1
+        self.proof_input(proof, spec);toclear+=1
 
 def complete(text, state):
     return (glob.glob(text+'*')+[None])[state]
+
+def rlinput(prompt, prefill=''):
+   readline.set_startup_hook(lambda: readline.insert_text(prefill))
+   try:
+      return input(prompt)
+   finally:
+      readline.set_startup_hook()
+
+def optionsDictToString(d):
+    return ','.join(map(' '.join, d.items()))
+
+def stringToOptionsDict(s):
+    optsDict = NestedDefaultDict()
+    s = ' '.join(s.split())
+    pairs = s.split(',')
+    pairs = [p.strip() for p in pairs]
+    for pair in pairs:
+        key = pair.split(' ')[0]
+        try:
+            value = pair.split(' ')[1]
+            optsDict[key] = value
+        except:
+            optsDict[key] = ""
+    return optsDict
 
 def print_dict(dict, indent=6):
     print(json.dumps(dict, indent=indent))
@@ -438,10 +465,9 @@ def create_project():
         )
         project.name = os.path.basename(operator.get_answer())
         project.path = operator.get_answer()
+        if os.path.isdir(project.path):
+            return project_error()
         if os.path.isdir(os.path.dirname(project.path)):
-            proof = os.path.join(project.path, project.name)
-            if os.path.isdir(proof):
-                return project_error()
             break
         else:
             switch=True
@@ -487,13 +513,14 @@ def add_samples():
             switch = False
     counter=1
     for p in path_to_samples:
-        for file in sorted(os.listdir(p)):
-            if file.endswith('.fastq.gz'):
-                project.sampleDict[str(counter)]=[file, os.path.join(p,file)]
+        for dirpath, dirnames, filenames in os.walk(p):
+            for filename in [f for f in filenames if f.endswith(".fastq.gz")]:
+                project.sampleDict[str(counter)]=[filename, os.path.join(p,filename)]
                 counter+=1
     return assign_samples()
 
 def assign_samples():
+    global project
     global toclear
     conditions=[pattern for pattern in project.conditionDict.get_condition_list()]
     for condition in conditions:
@@ -558,30 +585,50 @@ def set_settings2():
     select_setting_level()
     counter=1
     for setting in project.settingsList:
+        conditionnames = []
         for maplist in setting:
+            condition = ":".join(maplist)
+            conditionnames.append(condition)
             for key in ["SAMPLES","TYPES","GROUPS","BATCHES"]:
-                setInDict(project.settingsDict,maplist,[],[key])
-        for key in ['TYPES','SEQUENCING','REFERENCE','INDEX','PREFIX']:
+                setInDict(project.settingsDict,maplist+[key],[])
+            for key in ['SEQUENCING','REFERENCE','INDEX','PREFIX']:
+                setInDict(project.settingsDict,maplist+[key],"")
+            setInDict(project.settingsDict,maplist+['ANNOTATION',"GTF"],"")
+            setInDict(project.settingsDict,maplist+['ANNOTATION',"GFF"],"")
+            samplecount=0
+            for k,v in project.sampleDict.items():
+                if len(v) == 3: # sampleDict got 3 values if sample is assignet to a condition, else its only path and name as values available
+                    samplename = v[0]
+                    if v[2] == condition:
+                        samplecount+=1
+                        setInDict(project.settingsDict,maplist+["SAMPLES"],samplename)
+        for key in ['TYPES',"GROUPS","BATCHES"]:
+            operator.display(
+            text=location(getFromDict(project.settingsDict,setting[0]),setting),
+            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict[key],
+            default='\n'.join(project.configDict["SETTINGS"][key]),
+            )
+            for maplist in setting:
+                for i in range(samplecount):
+                    setInDict(project.settingsDict,maplist+[key],operator.get_answer())
+
+        for key in ['SEQUENCING','REFERENCE','INDEX','PREFIX']:
             if key == 'SEQUENCING':
-                p = ["unpaired","paired"]
+                p = ["single","paired"]
             else:
                 p = None
             operator.display(
-            text=location(project.conditionDict,setting),
-            option=options_dict[key]+"\n\nor enter to skip",
+            text=location(getFromDict(project.settingsDict,setting[0]),setting),
+            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict[key],
             default='\n'.join(project.configDict["SETTINGS"][key]),
             proof = p
             )
             for maplist in setting:
-                for k,v in project.sampleDict.items():
-                    if ':'.join(maplist) == v[2]:
-                        setInDict(project.settingsDict,maplist+[key],operator.get_answer())
-                        # setInDict(project.settingsDict,maplist+["GROUPS"], ':'.join(maplist))
-                        # setInDict(project.settingsDict,maplist+["BATCHES"], counter)
+                setInDict(project.settingsDict,maplist+[key],operator.get_answer())
         for key in ['GTF', 'GFF']:
             operator.display(
-            text=location(project.conditionDict,setting),
-            option=options_dict['ANNOTATION'][key]+"\nor enter to skip",
+            text=location(getFromDict(project.settingsDict,setting[0]),setting),
+            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict['ANNOTATION'][key],
             default='\n'.join(project.configDict["SETTINGS"]['ANNOTATION'][key]),
             proof = p
             )
@@ -591,10 +638,17 @@ def set_settings2():
     return set_workflows()
 
 def select_tools(workflow):
+    operator.display(
+    text=get_doc("postprocessing"),
+    question="enter to continue"
+    )
+    return select_tools2(workflow)
+
+def select_tools2(workflow):
     global project
     operator.display(
     text=json.dumps(project.conditionDict,indent=6),
-    option='select from these available Tools:',
+    option='Select from these available Tools:',
     default='\n'.join(project.configDict[workflow]['TOOLS'].keys()),
     question="enter comma separated",
     proof=project.configDict[workflow]['TOOLS'].keys()
@@ -651,31 +705,15 @@ def set_workflows():
                 for maplist in setting:
                     setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],[])
                 for i in range(len(project.configDict[workflow][tool]['OPTIONS'])):
+                    call =  optionsDictToString(project.configDict[workflow][tool]['OPTIONS'][i])
                     operator.display(
                     text=location(project.conditionDict,setting),
-                    option=options_dict[workflow]['OPTIONS'][i],
-                    default=f"Settings for {tool}\n\n"+'\n'.join(project.configDict[workflow][tool]['OPTIONS'][i]),
-                    question="wanna change? [ y / N ]",
-                    proof=["","y","Y","N","n"]
+                    option=options_dict[workflow]['OPTIONS'][i] +"\n\n!! please separate flag value pairs with comma !!",
+                    question="edit or confirm with enter",
+                    spec= call
                     )
-                    if operator.get_answer().lower() == 'y':
-                        optsdict = NestedDefaultDict()
-                        for opt in project.configDict[workflow][tool]['OPTIONS'][i]:
-                            operator.display(
-                            text=location(project.conditionDict,setting),
-                            option=opt,
-                            default=None,
-                            question="enter",
-                            proof=None
-                            )
-                            optsdict[opt] = operator.get_answer()
-                        for maplist in setting:
-                            setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],optsdict)
-                    if operator.get_answer().lower() == 'n' or operator.get_answer() == '':
-                        for maplist in setting:
-                            setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],project.configDict[workflow][tool]['OPTIONS'][i])
-                        continue
-
+                    optsDict = stringToOptionsDict(operator.get_answer())
+                    setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],optsDict)
         if 'COMPARABLE' in project.configDict[workflow].keys():
             create_comparables(workflow)
     return set_cores()
@@ -716,30 +754,27 @@ def end():
 
     # LINK samples into FASTQ and insert samplenames in dict
     for k,v in project.sampleDict.items():
-        samplename = v[0]
-        origin = v[1]
-        condition = v[2]
-        cond_as_list=[x for x in condition.split(':')]
-        os.chdir(fastq)
+        if len(v) == 3:
+            samplename = v[0]
+            origin = v[1]
+            condition = v[2]
+            cond_as_list=[x for x in condition.split(':')]
+            os.chdir(fastq)
 
-        for dir in cond_as_list:
-            if not os.path.exists(os.path.join(dir)):
-                os.mkdir(os.path.join(dir))
-            os.chdir(os.path.join(dir))
-        path='/'.join(cond_as_list)
-        cond_dir=os.path.join(fastq,path)
-        os.symlink(origin, os.path.join(cond_dir,samplename))
-        setInDict(project.settingsDict,cond_as_list+["SAMPLES"],samplename)
-
-
+            for dir in cond_as_list:
+                if not os.path.exists(os.path.join(dir)):
+                    os.mkdir(os.path.join(dir))
+                os.chdir(os.path.join(dir))
+            path='/'.join(cond_as_list)
+            cond_dir=os.path.join(fastq,path)
+            os.symlink(origin, os.path.join(cond_dir,samplename))
+            setInDict(project.settingsDict,cond_as_list+["SAMPLES"],samplename)
 
     # link reference and annotation and insert in dict
     for setting in project.settingsList:
         for condition in setting:
 
             ref = getFromDict(project.settingsDict,condition + ['REFERENCE'])
-            gtf = getFromDict(project.settingsDict,condition + ['ANNOTATION','GTF'])
-            gff = getFromDict(project.settingsDict,condition + ['ANNOTATION','GFF'])
             if os.path.isfile(ref):
                 if not os.path.exists(os.path.join(gen,os.path.basename(ref))):
                     os.symlink(ref, os.path.join(gen,os.path.basename(ref)))
@@ -749,6 +784,8 @@ def end():
             else:
                 print("reference path is not correct, could not symlink, please do by hand")
                 setInDict(project.settingsDict,condition+ ['REFERENCE'],"EMPTY")
+
+            gtf = getFromDict(project.settingsDict,condition + ['ANNOTATION','GTF'])
             if os.path.isfile(gtf):
                 if not os.path.exists(os.path.join(gen,os.path.basename(gtf))):
                     os.symlink(ref, os.path.join(gen,os.path.basename(gtf)))
@@ -758,6 +795,8 @@ def end():
             else:
                 print("GTF path is not correct, could not symlink, please do by hand")
                 setInDict(project.settingsDict,condition+['ANNOTATION','GTF'],"EMPTY")
+
+            gff = getFromDict(project.settingsDict,condition + ['ANNOTATION','GFF'])
             if os.path.isfile(gff):
                 if not os.path.exists(os.path.join(gen,os.path.basename(gff))):
                     os.symlink(ref, os.path.join(gen,os.path.basename(gff)))
@@ -798,6 +837,8 @@ def finalize_project(final_dict):
 
 options_dict=NestedDefaultDict()
 options_dict['TYPES'] = 'set types'
+options_dict['BATCHES'] = 'set batches'
+options_dict['GROUPS'] = 'set groups'
 options_dict['SEQUENCING'] = 'set seq'
 options_dict['REFERENCE'] = 'set the path to the Reference'
 options_dict['INDEX'] = 'set index'
@@ -812,21 +853,17 @@ options_dict['PEAKS']['OPTIONS'][0] = "peaks options"
 options_dict['MAPPING']['OPTIONS'][0] = "set indexing options"
 options_dict['MAPPING']['OPTIONS'][1] = "set mapping options"
 options_dict['MAPPING']['OPTIONS'][2] = "set name extension for index"
-options_dict['DAS']['OPTIONS'][0] = "set counting options"
+options_dict['DAS']['OPTIONS'][0] = "set counting options "
 options_dict['DAS']['OPTIONS'][1] = "set diego options"
-options_dict['DEU']['OPTIONS'][0] = "set counting options"
+options_dict['DEU']['OPTIONS'][0] = "set counting options  for featureCounts"
 options_dict['DEU']['OPTIONS'][1] = "set x options"
-options_dict['DE']['OPTIONS'][0] = "set counting options"
+options_dict['DE']['OPTIONS'][0] = "set counting options for featureCounts"
 options_dict['DE']['OPTIONS'][1] = "set x options"
-options_dict['SEQUENCING'] = "paired or unpaired?"
+options_dict['SEQUENCING'] = "paired or single?"
 options_dict['GENOME'] = "which organism?"
-
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 cwd=os.getcwd()
-
-conditions=NestedDefaultDict()
-
 toclear=0
 operator = OPERATOR()
 project = PROJECT()
@@ -837,6 +874,11 @@ project.gitLink = "git@github.com:jfallmann/NextSnakes.git"
 # main #
 ########
 def main():
+    global project
+
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: menu-complete")
+    readline.set_completer(complete)
 
     header='  _  _                     _       ___                     _\n'\
     ' | \| |    ___    __ __   | |_    / __|   _ _     __ _    | |__    ___     ___\n'\
@@ -846,10 +888,6 @@ def main():
     print("\n\n")
     for line in header.split('\n'):
         print(f"{' '*10}{line}")
-
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: menu-complete")
-    readline.set_completer(complete)
 
     start()
 
