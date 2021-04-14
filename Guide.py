@@ -565,7 +565,7 @@ def select_setting_level():
             project.settingsList = []
             operator.display(
             text= select_id_to_set(project.conditionDict,i),
-            option="enter to loop through the possible condition-settings\nyou will set all conditions with the same number at once afterwards \n\nenter'select' for your setting",
+            option="enter to loop through the possible condition-settings\nyou will set all conditions with the same number at once afterwards \n\nenter 'select' for your setting",
             default=None,
             question="",
             proof=["select",""]
@@ -574,6 +574,7 @@ def select_setting_level():
                 return
 
 def set_settings():
+    operator.title("MAKE GENERAL SETTINGS")
     operator.display(
     text=get_doc("settings"),
     option='enter to continue',
@@ -605,7 +606,7 @@ def set_settings2():
         for key in ['TYPES',"GROUPS","BATCHES"]:
             operator.display(
             text=location(getFromDict(project.settingsDict,setting[0]),setting),
-            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict[key],
+            option=f"Make settings for conditions: \n\n {' '.join(conditionnames)}.\nOr press enter to skip\n\n"+options_dict[key],
             default='\n'.join(project.configDict["SETTINGS"][key]),
             )
             for maplist in setting:
@@ -617,9 +618,10 @@ def set_settings2():
                 p = ["single","paired"]
             else:
                 p = None
+            cs = '\n  > '.join(conditionnames)
             operator.display(
             text=location(getFromDict(project.settingsDict,setting[0]),setting),
-            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict[key],
+            option=f"Make settings for conditions: \n\n  > '{cs}'.\n\nOr press enter to skip\n\n"+options_dict[key],
             default='\n'.join(project.configDict["SETTINGS"][key]),
             proof = p
             )
@@ -638,6 +640,7 @@ def set_settings2():
     return set_workflows()
 
 def select_tools(workflow):
+    operator.title("SELECT TOOLS")
     operator.display(
     text=get_doc("postprocessing"),
     question="enter to continue"
@@ -720,7 +723,7 @@ def set_workflows():
 
 def set_cores():
     global projects
-    operator.title("Number of Cores")
+    operator.title("NUMBER OF CORES")
     operator.display(
     text=get_doc('processes'),
     option="set number of cores",
@@ -818,7 +821,7 @@ def end():
     print(20*'\n')
 
     os.chdir(cwd)
-    operator.title(f"{'*'*30}")
+    operator.title(f"{'*'*10}")
     configfile = f"config_{project.name}.json"
     operator.display(
     text=get_doc('runsnakemake'),
@@ -853,6 +856,8 @@ options_dict['PEAKS']['OPTIONS'][0] = "peaks options"
 options_dict['MAPPING']['OPTIONS'][0] = "set indexing options"
 options_dict['MAPPING']['OPTIONS'][1] = "set mapping options"
 options_dict['MAPPING']['OPTIONS'][2] = "set name extension for index"
+options_dict['DTU']['OPTIONS'][0] = "set Salmon index options"
+options_dict['DTU']['OPTIONS'][1] = "set Salmon quant options"
 options_dict['DAS']['OPTIONS'][0] = "set counting options "
 options_dict['DAS']['OPTIONS'][1] = "set diego options"
 options_dict['DEU']['OPTIONS'][0] = "set counting options  for featureCounts"
@@ -883,7 +888,7 @@ def main():
     header='  _  _                     _       ___                     _\n'\
     ' | \| |    ___    __ __   | |_    / __|   _ _     __ _    | |__    ___     ___\n'\
     ' | .` |   / -_)   \ \ /   |  _|   \__ \  | ` \   / _` |   | / /   / -_)   (_-<\n'\
-    ' |_|\_|   \___|   /_\_\   _\__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/_\n'
+    ' |_|\_|   \___|   /_\_\    \__|   |___/  |_||_|  \__,_|   |_\_\   \___|   /__/ \n'
 
     print("\n\n")
     for line in header.split('\n'):

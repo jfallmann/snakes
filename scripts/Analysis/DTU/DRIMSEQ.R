@@ -101,14 +101,15 @@ table(table(counts(d)$gene_id))
 
 # create designmatrix
 #   original code for simple model
-design <- model.matrix(~groups, data=DRIMSeq::samples(d))
+design <- model.matrix(~0+groups, data=samps)
+colnames(design) <- levels(groups)
 
 ## name types and levels for design
-bl <- sapply("batch", paste0, levels(batches)[-1])
-tl <- sapply("type", paste0, levels(types)[-1])
+# bl <- sapply("batch", paste0, levels(batches)[-1])
+# tl <- sapply("type", paste0, levels(types)[-1])
 
-## Create design-table considering different types (paired, unpaired) and batches
-#if (length(levels(types)) > 1){
+# Create design-table considering different types (paired, unpaired) and batches
+# if (length(levels(types)) > 1){
 #    if (length(levels(batches)) > 1){
 #        design <- model.matrix(~0+groups+types+batches, data=samps)
 #        colnames(design) <- c(levels(groups),tl,bl)
@@ -116,7 +117,7 @@ tl <- sapply("type", paste0, levels(types)[-1])
 #        design <- model.matrix(~0+groups+types, data=samps)
 #        colnames(design) <- c(levels(groups),tl)
 #    }
-#} else{
+# } else{
 #    if (length(levels(batches)) > 1){
 #        design <- model.matrix(~0+groups+batches, data=samps)
 #        colnames(design) <- c(levels(groups),bl)
@@ -124,7 +125,7 @@ tl <- sapply("type", paste0, levels(types)[-1])
 #        design <- model.matrix(~0+groups, data=samps)
 #        colnames(design) <- levels(groups)
 #    }
-#}
+# }
 
 comparison_objs <- list()
 setwd(outdir)
