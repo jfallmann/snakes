@@ -26,6 +26,7 @@ def prBlack(skk): print("\033[98m{}\033[00m" .format(skk))
 
 def print_rst(rst):
     if not args.quickmode:
+        print('\n')
         source = "./docs/source/"
         path = os.path.join(source,rst)
         with open(path, 'r') as f:
@@ -55,6 +56,24 @@ def del_by_path(root, items):
         get_by_path(root, items[:-1])[items[-1]] = ""
     else:
         del get_by_path(root, items[:-1])[items[-1]]
+
+def setInDict(dataDict, maplist, value):
+    first, rest = maplist[0], maplist[1:]
+    if rest:
+        try:
+            if not isinstance(dataDict[first], dict):
+                dataDict[first] = {}
+        except KeyError:
+            dataDict[first] = {}
+        setInDict(dataDict[first], rest, value)
+    else:
+        try:
+            if isinstance(dataDict[first], list):
+                dataDict[first].append(value)
+            else:
+                dataDict[first] = value
+        except:
+            dataDict[first] = value
 
 def get_conditions_from_dict(root, keylist=[]):
     for k,v in root.items():
@@ -100,6 +119,7 @@ class PROJECT():
     def __init__(self):
         self.name = "moin"
         self.path = ""
+        self.cores = 1
         # self.configs = []
         self.baseDict =  NestedDefaultDict()
         self.conditionDict = NestedDefaultDict()
@@ -112,9 +132,7 @@ class PROJECT():
 
 class GUIDE():
     def __init__(self):
-        self.text=""
-        self.option=""
-        self.default=""
+        self.mode = ''
         self.question=""
         self.answer=""
         self.toclear = 0
@@ -302,6 +320,23 @@ def select_id_to_set(cdict,i,indent=6):
     prRed(f"\n{'='*60}\n")
     guide.toclear += 6
 
+def optionsDictToString(d):
+    return ','.join(map(' '.join, d.items()))
+
+def stringToOptionsDict(s):
+    optsDict = NestedDefaultDict()
+    s = ' '.join(s.split())
+    pairs = s.split(',')
+    pairs = [p.strip() for p in pairs]
+    for pair in pairs:
+        key = pair.split(' ')[0]
+        try:
+            value = pair.split(' ')[1]
+            optsDict[key] = value
+        except:
+            optsDict[key] = ""
+    return optsDict
+
 def location(dictionary,setting,indent=6):
     prRed(f"\n{'='*60}\n")
     spots=copy.deepcopy(setting)
@@ -350,7 +385,6 @@ def prepare_project(template):
         opt = get_by_path(project.baseDict, path)
         set_by_path(project.commentsDict, path, opt)
         del_by_path(project.baseDict, path)
-
     return intro()
 
 def intro():
@@ -360,8 +394,10 @@ def intro():
     proof = ["new", "expand"],
     )
     if guide.answer == 'new':
+        guide.mode = 'new'
         return new()
     if guide.answer == 'expand':
+        guide.mode = 'expand'
         return expand()
 
 def new():
@@ -369,12 +405,11 @@ def new():
     er = 0
     while True:
         if er == 0:
-            ques = "Enter the absolute path, where your project-folder should be created"
+            ques = "Enter the absolute path where your project-folder should be created"
         if er == 1:
             ques = "couldn't find this directory"
         if er == 2:
             ques = f"In the directory you entered, a folder with the name '{project.name}' already exist."
-        print("enter like  /path/to/MyNewProject")
         guide.display(
         question = ques,
         spec = os.getcwd()
@@ -411,7 +446,8 @@ def create_condition_tree():
             project.conditionDict = NestedDefaultDict()
         else:
             project.settingsDict = decouple(project.conditionDict)
-            return add_sample_dirs()
+            break
+    return add_sample_dirs()
 
 def add_sample_dirs():
     print_rst("samples.rst")
@@ -420,11 +456,11 @@ def add_sample_dirs():
     er = 0
     while True:
         if er == 0:
-            ques="Enter an absolute path \n\nor press enter to continue"
+            ques="Enter an absolute path nor type 'select' to continue"
         if er == 1:
-            ques=f"Sorry, couldn't find {dir}\n\nEnter an absolute path where samples are stored"
+            ques=f"Sorry, couldn't find '{dir}'. Enter an absolute path where samples are stored"
         if er == 2:
-            ques=f"We need samples to continue, so please enter an path\n\nEnter an absolute path where samples are stored"
+            ques=f"Samples must be specified to continue. Enter an absolute path where samples are stored"
         guide.display(
         question = ques,
         options = path_to_samples_dict,
@@ -432,40 +468,38 @@ def add_sample_dirs():
         )
         dir = guide.answer
         if os.path.isdir(dir):
-            project.samplesDict[dir] = []
             for dirpath, dirnames, filenames in os.walk(dir):
                 for filename in [f for f in filenames if f.endswith(".fastq.gz")]:
-                    project.samplesDict[dir].append(filename)
+                    project.samplesDict[os.path.join(dirpath,filename)]= {}
             path_to_samples_dict[dir] = f"{len(project.samplesDict[dir]) } Files found"
-            guide.clear(len(path_to_samples_dict)+5)
+            guide.clear(len(path_to_samples_dict)+3)
             er = 0
             continue
-        if guide.answer == '' and len(project.samplesDict) == 0 :
+        if guide.answer == 'select' and len(project.samplesDict) == 0 :
             er = 2
-            guide.clear(4)
+            guide.clear(3)
             continue
-        if guide.answer == '' and len(project.samplesDict) != 0 :
+        if guide.answer == 'select' and len(project.samplesDict) != 0 :
             break
             switch = False
         if not os.path.isdir(dir):
             er = 1
             if path_to_samples_dict:
                 guide.clear(len(path_to_samples_dict)+2)
-            guide.clear(4)
+            guide.clear(3)
             continue
     counter=1
     return assign_samples()
 
 def assign_samples():
-    print("\nAssign")
     conditions=[pattern for pattern in get_conditions_from_dict(project.conditionDict)]
     samples = NestedDefaultDict()
+    project.settingsDict = decouple(project.conditionDict)
     while True:
-        number = 0
-        for k,v in project.samplesDict.items():
-            for samp in v:
-                number +=1
-                samples[number] = f"{samp.replace('.fastq.gz','')}"
+        number = 1
+        for samp in project.samplesDict.keys():
+            samples[number] = samp
+            number +=1
         for condition in conditions:
             cond_as_list=[x for x in condition.split(':')]
             location(project.settingsDict,[cond_as_list])
@@ -476,7 +510,9 @@ def assign_samples():
             )
             select = []
             for num in guide.answer.split(','):
-                select.append(samples[int(num)])
+                s = os.path.basename(samples[int(num)]).replace('.fastq.gz','')
+                set_by_path(project.samplesDict,[samples[int(num)]],condition)
+                select.append(s)
                 samples.pop(int(num))
             set_by_path(project.settingsDict,cond_as_list,{"SAMPLES":select},)
             guide.toclear += len(samples)
@@ -512,13 +548,14 @@ def expand():
             er = 1
             continue
         try:
-            config = load_configfile(guide.answer)
+            expand_config = load_configfile(guide.answer)
             project.path = os.path.dirname(guide.answer)
-            project.name = list(config['SETTINGS'].keys())[0]
+            project.name = list(expand_config['SETTINGS'].keys())[0]
+            project.cores = expand_config["MAXTHREADS"]
         except:
             er = 2
 
-        condition_pathes = getPathesFromDict(config, "SAMPLES")
+        condition_pathes = getPathesFromDict(expand_config, "SAMPLES")
         for path in condition_pathes:
             if path[-1] == "SAMPLES":
                 path = path[1:-1]
@@ -532,32 +569,37 @@ def expand():
         # print_dict(config["SETTINGS"])
         #show Workflows
         prRed("\nactive WORKFLOWS:")
-        active_workflows = config['WORKFLOWS'].split(',')
+        active_workflows = expand_config['WORKFLOWS'].split(',')
         print(active_workflows)
         prRed("\ninactive WORKFLOWS:")
-        inactive_workflows = list(config.keys())
+        inactive_workflows = list(expand_config.keys())
         for e in ["WORKFLOWS","BINS","MAXTHREADS","SETTINGS"]:
             inactive_workflows.remove(e)
-        for e in config['WORKFLOWS'].split(','):
+        for wf in inactive_workflows:
+            project.workflowsDict[wf] = decouple(expand_config[wf])
+        for e in expand_config['WORKFLOWS'].split(','):
             inactive_workflows.remove(e)
         print(inactive_workflows)
         guide.display(
-        question = "\npress enter to add worfklow to this config or type 'correct' to choose another file",
+        question = "\npress enter to add worfklows to this config or type 'correct' to choose another file",
         proof = ['','correct']
         )
         if guide.answer == '':
-            return choose_workflows(inactive_workflows+active_workflows)
+            project.settingsDict = expand_config['SETTINGS']
+            break
         if guide.answer == 'correct':
             project.conditionDict = NestedDefaultDict()
             continue
+    return choose_workflows(inactive_workflows+active_workflows)
 
 def choose_workflows(existing_workflows = None):
-    print_rst("worflows.rst")
+    print_rst("workflows.rst")
     possible_workflows = list(project.baseDict.keys())
     for e in ["WORKFLOWS","BINS","MAXTHREADS","SETTINGS"]:
         possible_workflows.remove(e)
-    for e in existing_workflows:
-        possible_workflows.remove(e)
+    if existing_workflows:
+        for e in existing_workflows:
+            possible_workflows.remove(e)
     posWorkDict = NestedDefaultDict()
     counter = 1
     for w in possible_workflows:
@@ -571,8 +613,7 @@ def choose_workflows(existing_workflows = None):
     for number in guide.answer.split(','):
         wf = posWorkDict[int(number)]
         project.workflowsDict[wf]
-    print_dict(project.workflowsDict)
-    input()
+    print(f"\nSelected Workflows: {list(project.workflowsDict.keys())}")
     return select_conditioning()
 
 def select_conditioning():
@@ -586,74 +627,730 @@ def select_conditioning():
             )
             guide.toclear += 5
             if guide.answer == 'select':
-                return set_settings()
+                if guide.mode == "new":
+                    return set_settings()
+                if guide.mode == "expand":
+                    return set_workflows()
             else:
                 guide.clear()
 
 def set_settings():
     print_rst("settings.rst")
+    safety_dict = decouple(project.settingsDict)
+    while True:
+        for setting in project.settingsList:
+            conditionnames = []
+            opt_dict = NestedDefaultDict()
+            for maplist in setting:
+                condition = ":".join(maplist)
+                conditionnames.append(condition)
+                for key in ['TYPES',"GROUPS","BATCHES"]:
+                    setInDict(project.settingsDict,maplist+[key],[])
+                    opt_dict[key] = ''
+                for key in ['SEQUENCING','REFERENCE','INDEX','PREFIX']:
+                    setInDict(project.settingsDict,maplist+[key],"")
+                    opt_dict[key] = ''
+                setInDict(project.settingsDict,maplist+['ANNOTATION',"GTF"],"")
+                setInDict(project.settingsDict,maplist+['ANNOTATION',"GFF"],"")
+                opt_dict["GTF"] = ''
+                opt_dict["GFF"] = ''
 
-    for setting in project.settingsList:
-        conditionnames = []
-        for maplist in setting:
-            condition = ":".join(maplist)
-            conditionnames.append(condition)
-            for key in ["SAMPLES","TYPES","GROUPS","BATCHES"]:
-                setInDict(project.settingsDict,maplist+[key],[])
-            for key in ['SEQUENCING','REFERENCE','INDEX','PREFIX']:
-                setInDict(project.settingsDict,maplist+[key],"")
-            setInDict(project.settingsDict,maplist+['ANNOTATION',"GTF"],"")
-            setInDict(project.settingsDict,maplist+['ANNOTATION',"GFF"],"")
-            samplecount=0
-            for k,v in project.sampleDict.items():
-                if len(v) == 3: # sampleDict got 3 values if sample is assignet to a condition, else its only path and name as values available
-                    samplename = v[0]
-                    if v[2] == condition:
-                        samplecount+=1
-                        setInDict(project.settingsDict,maplist+["SAMPLES"],samplename)
-        for key in ['TYPES',"GROUPS","BATCHES"]:
-            operator.display(
-            text=location(getFromDict(project.settingsDict,setting[0]),setting),
-            option=f"Make settings for conditions: \n\n {' '.join(conditionnames)}.\nOr press enter to skip\n\n"+options_dict[key],
-            default='\n'.join(project.configDict["SETTINGS"][key]),
-            )
-            for maplist in setting:
-                for i in range(samplecount):
-                    setInDict(project.settingsDict,maplist+[key],operator.get_answer())
-
-        for key in ['SEQUENCING','REFERENCE','INDEX','PREFIX']:
-            if key == 'SEQUENCING':
-                p = ["single","paired"]
-            else:
-                p = None
-            cs = '\n  > '.join(conditionnames)
-            operator.display(
-            text=location(getFromDict(project.settingsDict,setting[0]),setting),
-            option=f"Make settings for conditions: \n\n  > '{cs}'.\n\nOr press enter to skip\n\n"+options_dict[key],
-            default='\n'.join(project.configDict["SETTINGS"][key]),
-            proof = p
-            )
-            for maplist in setting:
-                setInDict(project.settingsDict,maplist+[key],operator.get_answer())
-        for key in ['GTF', 'GFF']:
-            operator.display(
-            text=location(getFromDict(project.settingsDict,setting[0]),setting),
-            option=f"Make settings for conditions:   '{', '.join(conditionnames)}'.\nOr press enter to skip\n\n"+options_dict['ANNOTATION'][key],
-            default='\n'.join(project.configDict["SETTINGS"]['ANNOTATION'][key]),
-            proof = p
-            )
-            for maplist in setting:
-                setInDict(project.settingsDict,maplist+['ANNOTATION',key],operator.get_answer())
+            for key in ['TYPES',"GROUPS","BATCHES",'SEQUENCING','REFERENCE','INDEX','PREFIX','GTF','GFF']:
+                guide.toclear = 0
+                if key == 'SEQUENCING':
+                    p = ["single","paired"]
+                else:
+                    p = None
+                if key in ['REFERENCE','GTF','GFF']:
+                    s = os.getcwd()
+                else:
+                    s = None
+                location(project.conditionDict,setting)
+                guide.display(
+                question=f"comment: {project.commentsDict['SETTINGS']['comment'][key]}",
+                options = opt_dict,
+                proof = p,
+                spec = s
+                )
+                # print_dict(project.settingsDict)
+                for maplist in setting:
+                    samps_number = len(get_by_path(project.settingsDict,maplist+["SAMPLES"]))
+                    if key in ['TYPES',"GROUPS","BATCHES"]:
+                        for i in range(samps_number):
+                            setInDict(project.settingsDict,maplist+[key],guide.answer)
+                            opt_dict[key] = guide.answer
+                    if key in ['GTF','GFF']:
+                        setInDict(project.settingsDict,maplist+['ANNOTATION',key],guide.answer)
+                        opt_dict[key] = guide.answer
+                    else:
+                        setInDict(project.settingsDict,maplist+[key],guide.answer)
+                        opt_dict[key] = guide.answer
+                guide.toclear += 15
+                guide.clear(guide.toclear)
+        print("\nSETTINGS key:")
+        print_dict(project.settingsDict)
+        guide.display(
+        question = "\npress enter to accept these settings or type 'correct'",
+        proof = ['','correct']
+        )
+        if guide.answer == '':
+            break
+        if guide.answer == 'correct':
+            project.settingsDict = decouple(safety_dict)
+            continue
     return set_workflows()
 
-# def set_workflows():
-#     return finalize()
-#
-# def finalize():
-#     return create_project()
-#
-# def create_project():
-#     return
+def set_workflows():
+    for workflow in project.workflowsDict.keys():
+        # k = list(project.conditionDict.keys())[0]
+        if not project.workflowsDict[workflow]:
+            prGreen(f"\nMake Settings for {workflow}\n")
+            opt_dict=NestedDefaultDict()
+            if 'TOOLS' in project.baseDict[workflow].keys():
+                number = 1
+                for k in project.baseDict[workflow]['TOOLS'].keys():
+                    opt_dict[number] = k
+                    number +=1
+                guide.display(
+                question='Select from these available Tools comma separated:',
+                options = opt_dict,
+                proof=[str(i) for i in opt_dict.keys()]
+                )
+                for number in guide.answer.split(','):
+                    project.workflowsDict[workflow]['TOOLS'][opt_dict[int(number)]] = project.baseDict[workflow]["TOOLS"][opt_dict[int(number)]]
+
+            if 'CUTOFFS' in project.baseDict[workflow].keys():
+                project.workflowsDict[workflow].update({'CUTOFFS':{}})
+                project.workflowsDict[workflow]["CUTOFFS"].update(project.baseDict[workflow]["CUTOFFS"])
+                for key,value in project.baseDict[workflow]['CUTOFFS'].items():
+                    print('\n')
+                    guide.display(
+                    question=f'Set {key}',
+                    proof="only_numbers",
+                    spec = value
+                    )
+                    set_by_path(project.workflowsDict,[workflow,"CUTOFFS",key],str(guide.answer))
+
+            if 'COMPARABLE' in project.baseDict[workflow].keys():
+                print_rst("comparable.rst")
+                while True:
+                    guide.display(
+                    question="\nenter the naming to add a comparison group or enter to continue",
+                    )
+                    if guide.answer == '':
+                        break
+                    comp_name=guide.answer
+                    project.workflowsDict[workflow]['COMPARABLE'][comp_name]=[[],[]]
+                    allp = getPathesFromDict(project.conditionDict)
+                    number = 1
+                    opt_dict = NestedDefaultDict()
+                    for p in allp:
+                        if p !=[]:
+                            opt_dict[number] = ':'.join(p)
+                            number+=1
+                    for i in [0,1]:
+                        print('\n')
+                        guide.display(
+                        question=f'select all keys for comparison group {i+1}',
+                        options= opt_dict,
+                        proof=[str(i) for i in opt_dict]
+                        )
+                        for num in guide.answer.split(','):
+                            project.workflowsDict[workflow]['COMPARABLE'][comp_name][int(i)].append(opt_dict[int(num)])
+                            opt_dict.pop(int(num))
+
+            for setting in project.settingsList:
+                for tool in project.workflowsDict[workflow]['TOOLS'].keys():
+                    for maplist in setting:
+                        setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],[])
+                    for i in range(len(project.baseDict[workflow][tool]['OPTIONS'])):
+                        if project.baseDict[workflow][tool]['OPTIONS'][i]:
+                            call =  optionsDictToString(project.baseDict[workflow][tool]['OPTIONS'][i])
+                            location(project.conditionDict,setting)
+                            print(f"Tool: {tool}\n")
+                            guide.display(
+                            question=f"comment: {project.commentsDict[workflow][tool]['comment'][i]}",
+                            spec= call
+                            )
+                            optsDict = stringToOptionsDict(guide.answer)
+                            for maplist in setting:
+                                setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],optsDict)
+                            guide.toclear += 5
+                            guide.clear(guide.toclear)
+                        else:
+                            for maplist in setting:
+                                setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],{})
+
+    if guide.mode == "new":
+        return set_cores()
+    if guide.mode == "expand":
+        return finalize()
+
+def set_cores():
+    print('\n')
+    guide.display(
+    question="Several workflows use multithreading, set the maximum number of cores that can be used",
+    proof='only_numbers'
+    )
+    project.cores = str(guide.answer)
+    return finalize()
+
+def finalize():
+    # print(project.name)
+    # print(project.path)
+    # print(project.cores)
+    # print_dict(project.conditionDict)
+    # print(project.settingsList)
+    # print_dict(project.settingsDict)
+    # print_dict(project.workflowsDict)
+    # print_dict(project.samplesDict)
+    # print_dict(project.commentsDict)
+    final_dict = NestedDefaultDict()
+
+    final_dict["WORKFLOWS"] = ','.join(project.workflowsDict.keys())
+    final_dict["BINS"] = project.baseDict["BINS"]
+    final_dict["MAXTHREADS"] = project.cores
+    final_dict["SETTINGS"] = project.settingsDict
+    final_dict.update(project.workflowsDict)
+
+    configfile = f"config_{project.name}.json"
+    print_dict(final_dict)
+    print('\n')
+
+    if guide.mode == "new":
+        space = len(configfile)
+        print("Above is your final configuration of NextSnakes. The Guide will create this directory as new project:\n")
+        prGreen(f"  {os.path.dirname(project.path)}")
+        prGreen(f"  └─{os.path.basename(project.path)}")
+        prGreen(f"     ├─nextsnakes{' '*(space-10)}   >  symlink to {os.getcwd()}")
+        prGreen(f"     ├─FASTQ{' '*(space-5)}   >  contains symlinks of your samplefiles")
+        prGreen(f"     ├─GENOMES{' '*(space-7)}   >  contains symlinks of your reference files")
+        prGreen(f"     └─{configfile}   >  your brand new configuration file")
+
+        guide.display(
+        question="\npress enter to create your project or type 'abort' before it gets serious",
+        proof = ['','abort']
+        )
+    if guide.mode == "expand":
+        print("Above is your updated configuration of NextSnakes\n")
+        guide.display(
+        question=f"\npress enter to update {configfile} or type 'abort' before it gets serious",
+        proof = ['','abort']
+        )
+
+    if guide.answer == 'abort':
+        quit()
+    else:
+        return create_project(final_dict)
+
+def create_project(final_dict):
+    if guide.mode == "new":
+
+        # create Project Folder
+        cwd=os.getcwd()
+        os.mkdir(project.path)
+        fastq = os.path.join(project.path,"FASTQ")
+        gen = os.path.join(project.path,"GENOMES")
+        os.mkdir(fastq)
+        os.mkdir(gen)
+        os.symlink(cwd, os.path.join(project.path,'nextsnakes'))
+
+        # LINK samples into FASTQ and insert samplenames in dict
+        for sample,condition in project.samplesDict.items():
+            if condition:
+                cond_as_list=[x for x in condition.split(':')]
+                os.chdir(fastq)
+                for dir in cond_as_list:
+                    if not os.path.exists(os.path.join(dir)):
+                        os.mkdir(os.path.join(dir))
+                    os.chdir(os.path.join(dir))
+                path='/'.join(cond_as_list)
+                cond_dir=os.path.join(fastq,path)
+                os.symlink(sample, os.path.join(cond_dir,os.path.basename(sample)))
+
+        # link reference and annotation
+        for setting in project.settingsList:
+            for condition in setting:
+                ref = get_by_path(project.settingsDict,condition + ['REFERENCE'])
+                if os.path.isfile(ref):
+                    if not os.path.exists(os.path.join(gen,os.path.basename(ref))):
+                        os.symlink(ref, os.path.join(gen,os.path.basename(ref)))
+                    f = os.path.join(gen,os.path.basename(ref))
+                    rel = os.path.os.path.relpath(f, start=project.path)
+                    setInDict(project.settingsDict,condition+ ['REFERENCE'],rel)
+                else:
+                    prRed(f"WARNING: reference path at {condition} is not correct, could not symlink, please do by hand")
+                    setInDict(project.settingsDict,condition+ ['REFERENCE'],"EMPTY")
+
+                gtf = get_by_path(project.settingsDict,condition + ['ANNOTATION','GTF'])
+                if os.path.isfile(gtf):
+                    if not os.path.exists(os.path.join(gen,os.path.basename(gtf))):
+                        os.symlink(ref, os.path.join(gen,os.path.basename(gtf)))
+                    f = os.path.join(gen,os.path.basename(gtf))
+                    rel = os.path.os.path.relpath(f, start=project.path)
+                    setInDict(project.settingsDict,condition+['ANNOTATION','GTF'],rel)
+                else:
+                    prRed(f"WARNING: GTF path at {condition} is not correct, could not symlink, please do by hand")
+                    setInDict(project.settingsDict,condition+['ANNOTATION','GTF'],"EMPTY")
+
+                gff = get_by_path(project.settingsDict,condition + ['ANNOTATION','GFF'])
+                if os.path.isfile(gff):
+                    if not os.path.exists(os.path.join(gen,os.path.basename(gff))):
+                        os.symlink(ref, os.path.join(gen,os.path.basename(gff)))
+                    f = os.path.join(gen,os.path.basename(gff))
+                    rel = os.path.os.path.relpath(f, start=project.path)
+                    setInDict(project.settingsDict,condition+['ANNOTATION','GFF'], rel)
+                else:
+                    prRed(f"WARNING: GFF path at {condition} is not correct, could not symlink, please do by hand")
+                    setInDict(project.settingsDict,condition+['ANNOTATION','GFF'], "EMPTY")
+
+    with open(os.path.join(project.path,f"config_{project.name}.json"),'w') as jsonout:
+        print(json.dumps(final_dict,indent=4),file=jsonout)
+
+    configfile = f"config_{project.name}.json"
+    print(f"\nStart RunSnakemake with")
+    prGreen(f"\n  python3 nextsnakes/RunSnakemake.py -c {configfile} --directory ${{PWD}}\n\n")
+
+####################
+####    TEST    ####
+####################
+
+def test_settings(template,sl=[]):
+    project.baseDict = template
+    project.name = "GGG"
+    project.path = "/home/pit/NextSnakes/GGG"
+    project.cores = 20
+    project.conditionDict = {
+          "GGG": {
+                "A": {
+                      "1": {},
+                      "2": {}
+                },
+                "B": {
+                      "1": {},
+                      "2": {}
+                },
+                "C": {
+                      "1": {},
+                      "2": {}
+                }
+          }
+    }
+    project.settingsList = [[['GGG', 'A', '1'], ['GGG', 'A', '2'], ['GGG', 'B', '1'], ['GGG', 'B', '2'], ['GGG', 'C', '1'], ['GGG', 'C', '2']]]
+    project.settingsDict = {
+          "GGG": {
+                "A": {
+                      "1": {
+                            "SAMPLES": [
+                                  "hcc1395_tumor_rep1_R1",
+                                  "hcc1395_tumor_rep1_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff.gz"
+                            }
+                      },
+                      "2": {
+                            "SAMPLES": [
+                                  "hcc1395_tumor_rep2_R1",
+                                  "hcc1395_tumor_rep2_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff3.gz"
+                            }
+                      }
+                },
+                "B": {
+                      "1": {
+                            "SAMPLES": [
+                                  "hcc1395_tumor_rep3_R1",
+                                  "hcc1395_tumor_rep3_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff3.gz"
+                            }
+                      },
+                      "2": {
+                            "SAMPLES": [
+                                  "hcc1395_normal_rep1_R1",
+                                  "hcc1395_normal_rep1_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff3.gz"
+                            }
+                      }
+                },
+                "C": {
+                      "1": {
+                            "SAMPLES": [
+                                  "hcc1395_normal_rep2_R1",
+                                  "hcc1395_normal_rep2_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff3.gz"
+                            }
+                      },
+                      "2": {
+                            "SAMPLES": [
+                                  "hcc1395_normal_rep3_R1",
+                                  "hcc1395_normal_rep3_R2"
+                            ],
+                            "TYPES": [
+                                  "normal",
+                                  "normal",
+                                  "normal"
+                            ],
+                            "GROUPS": [
+                                  "tachauch",
+                                  "tachauch",
+                                  "tachauch"
+                            ],
+                            "BATCHES": [
+                                  "1",
+                                  "1",
+                                  "1"
+                            ],
+                            "SEQUENCING": "single",
+                            "REFERENCE": "/home/pit/NextSnakes/practical/GENOMES/hg38/hg38.extended.fa.gz",
+                            "INDEX": "",
+                            "PREFIX": "",
+                            "ANNOTATION": {
+                                  "GTF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gtf.gz",
+                                  "GFF": "/home/pit/NextSnakes/practical/GENOMES/hg38/gencode.v35.annotation.gff3.gz"
+                            }
+                      }
+                }
+          }
+    }
+    if "workflows" in sl:
+        project.workflowsDict = {
+              "DTU": {
+                    "GGG": {
+                          "A": {
+                                "1": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                },
+                                "2": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                }
+                          },
+                          "B": {
+                                "1": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                },
+                                "2": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                }
+                          },
+                          "C": {
+                                "1": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                },
+                                "2": {
+                                      "dexseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      },
+                                      "drimseq": {
+                                            "OPTIONS": [
+                                                  {
+                                                        "--gencode": ""
+                                                  },
+                                                  {
+                                                        "-l": "A",
+                                                        "--gcBias": ""
+                                                  }
+                                            ]
+                                      }
+                                }
+                          }
+                    },
+                    "TOOLS": {
+                          "dexseq": "Analysis/DTU/DEXSEQ.R",
+                          "drimseq": "Analysis/DTU/DRIMSEQ.R"
+                    },
+                    "COMPARABLE": {
+                          "moininger": [
+                                [
+                                      "GGG:A"
+                                ],
+                                [
+                                      "GGG:B",
+                                      "GGG:C"
+                                ]
+                          ]
+                    }
+              }
+        }
+    project.samplesDict ={
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep1_R1.fastq.gz": "GGG:A:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep1_R2.fastq.gz": "GGG:A:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep2_R1.fastq.gz": "GGG:A:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep2_R2.fastq.gz": "GGG:A:2",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep3_R1.fastq.gz": "GGG:B:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/tumor/hcc1395_tumor_rep3_R2.fastq.gz": "GGG:B:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep1_R1.fastq.gz": "GGG:B:2",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep1_R2.fastq.gz": "GGG:C:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep2_R1.fastq.gz": "GGG:C:1",
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep2_R2.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep3_R1.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/FASTQ/practical/normal/hcc1395_normal_rep3_R2.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/tumor/hcc1395_tumor_rep3_R1_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/tumor/hcc1395_tumor_rep3_R2_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/tumor/hcc1395_tumor_rep1_R1_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/tumor/hcc1395_tumor_rep1_R2_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/normal/hcc1395_normal_rep3_R1_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/normal/hcc1395_normal_rep1_R1_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/normal/hcc1395_normal_rep3_R2_trimmed.fastq.gz": {},
+      "/home/pit/NextSnakes/practical/TRIMMED_FASTQ/hisat2-trimgalore-fastqc/practical/normal/hcc1395_normal_rep1_R2_trimmed.fastq.gz": "GGG:C:2"
+}
+
+
+    project.commentsDict = {
+          "SETTINGS": {
+                "comment": {
+                      "GROUPS": "set groups",
+                      "TYPES": "set types",
+                      "BATCHES": "set batches",
+                      "SEQUENCING": "paired or single",
+                      "REFERENCE": "set path to reference",
+                      "INDEX": "set index",
+                      "PREFIX": "set prefix",
+                      "GTF": "set path to gtf",
+                      "GFF": "set path to gff"
+                }
+          },
+          "DTU": {
+                "drimseq": {
+                      "comment": [
+                            "set Salmon INDEXing options",
+                            "set Salmon MAPPING options"
+                      ]
+                },
+                "dexseq": {
+                      "comment": [
+                            "set Salmon INDEXing options",
+                            "set Salmon MAPPING options"
+                      ]
+                }
+          }
+    }
+
+
+
+
+
 
 
 ####################
@@ -664,7 +1361,6 @@ def set_settings():
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 if __name__ == '__main__':
 
-
     template = load_configfile("configs/template_base_commented.json")
 
     # prGreen("\n/// WELCOME TO THE NEXTSNAKES CONFIGURATOR GUIDE")
@@ -674,17 +1370,9 @@ if __name__ == '__main__':
         prRed("\nrunning in explanation mode\n")
 
 
-    # prepare_project(template)
-    project.name = "moininger"
+    # test_settings(template,"workflows")
 
-    project.conditionDict = {
-      "practical": {
-            "normal": {},
-            "tumor": {},
-            "allin": {},
-            "allout": {}
-      }
-      }
-    project.settingsDict = decouple(project.conditionDict)
-    add_sample_dirs()
-    # test()
+    # add_sample_dirs()
+    # assign_samples()
+    # set_workflows()
+    prepare_project(template)

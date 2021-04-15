@@ -33,7 +33,6 @@
     },
     "sra": {
       "OPTIONS": [
-        {},
         {}
       ]
     }
@@ -44,7 +43,6 @@
     },
     "guppy": {
       "OPTIONS": [
-        {},
         {}
       ]
     }
@@ -55,7 +53,6 @@
     },
     "fastqc": {
       "OPTIONS": [
-        {},
         {}
       ]
     }
@@ -66,6 +63,9 @@
       "cutadapt": "cutadapt"
     },
     "trimgalore": {
+      "comment": [
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "-q": "15",
@@ -75,6 +75,9 @@
       ]
     },
     "cutadept": {
+      "comment": [
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "-q": "15",
@@ -89,6 +92,10 @@
       "umitools": "umi_tools"
     },
     "umitools": {
+      "comment": [
+        "??? options",
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "--extract-method": "string",
@@ -96,8 +103,7 @@
         },
         {
           "--extract-umi-method": "read_id"
-        },
-        {}
+        }
       ]
     }
   },
@@ -110,6 +116,10 @@
       "minimap": "minimap2"
     },
     "star": {
+      "comment": [
+        "??? options",
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "--sjdbGTFfeatureExon": "exon",
@@ -125,25 +135,21 @@
     },
     "segemehl3": {
       "OPTIONS": [
-        {},
         {}
       ]
     },
     "hisat2": {
       "OPTIONS": [
-        {},
         {}
       ]
     },
     "bwa": {
       "OPTIONS": [
-        {},
         {}
       ]
     },
     "minimap": {
       "OPTIONS": [
-        {},
         {}
       ]
     }
@@ -157,6 +163,9 @@
       "gene": "ID"
     },
     "countreads": {
+      "comment": [
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "-f": "",
@@ -173,6 +182,9 @@
       "annotatebed": "annotate"
     },
     "annotatebed": {
+      "comment": [
+        "??? options"
+      ],
       "ANNOFEATURE": "gene",
       "OPTIONS": [
         {
@@ -186,6 +198,9 @@
       "ucsc": "ucsc"
     },
     "ucsc": {
+      "comment": [
+        "??? options"
+      ],
       "OPTIONS": [
         {
           "-n": "DM6_unpaired_Mapping",
@@ -203,27 +218,33 @@
       "piranha": "Piranha"
     },
     "macs": {
+      "comment": [
+        "??? options"
+      ],
       "CLIP": "iCLIP",
       "OPTIONS": [
-        {},
         {
           "-b": "10"
         }
       ]
     },
     "peaks": {
+      "comment": [
+        "??? options"
+      ],
       "CLIP": "iCLIP",
       "OPTIONS": [
-        {},
         {
           "-b": "10"
         }
       ]
     },
     "piranha": {
+      "comment": [
+        "??? options"
+      ],
       "CLIP": "iCLIP",
       "OPTIONS": [
-        {},
         {
           "-b": "10"
         }
@@ -247,6 +268,10 @@
       "lfc": "1.5"
     },
     "deseq2": {
+      "comment": [
+        "Set featureCounts options",
+        "Set Cutoff ???"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -261,6 +286,10 @@
       ]
     },
     "edger": {
+      "comment": [
+        "Set featureCounts options",
+        "Set Cutoff ???"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -292,6 +321,10 @@
       "lfc": "1.5"
     },
     "dexseq": {
+      "comment": [
+        "Set featureCounts options",
+        "Set Cutoff ???"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -306,6 +339,10 @@
       ]
     },
     "edger": {
+      "comment": [
+        "Set featureCounts options",
+        "Set Cutoff ???"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -337,6 +374,10 @@
       "lfc": "1.5"
     },
     "diego": {
+      "comment": [
+        "set featureCounts options",
+        "set Diego options"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -355,6 +396,10 @@
       ]
     },
     "edger": {
+      "comment": [
+        "Set featureCounts options",
+        "Set Cutoff ???"
+      ],
       "OPTIONS": [
         {
           "-t": "exon",
@@ -397,11 +442,14 @@
         {
           "-l": "A",
           "--gcBias": ""
-        },
-        "std"
+        }
       ]
     },
     "dexseq": {
+      "comment": [
+        "set Salmon INDEXing options",
+        "set Salmon MAPPING options"
+      ],
       "OPTIONS": [
         {
           "--gencode": ""
@@ -409,8 +457,7 @@
         {
           "-l": "A",
           "--gcBias": ""
-        },
-        "std"
+        }
       ]
     }
   }
