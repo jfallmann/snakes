@@ -766,6 +766,7 @@ def set_workflows():
                     for i in range(len(project.baseDict[workflow][tool]['OPTIONS'])):
                         if project.baseDict[workflow][tool]['OPTIONS'][i]:
                             call =  optionsDictToString(project.baseDict[workflow][tool]['OPTIONS'][i])
+                            guide.toclear = 0
                             location(project.conditionDict,setting)
                             print(f"Tool: {tool}\n")
                             guide.display(
@@ -775,8 +776,8 @@ def set_workflows():
                             optsDict = stringToOptionsDict(guide.answer)
                             for maplist in setting:
                                 setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],optsDict)
-                            guide.toclear += 5
-                            guide.clear(guide.toclear)
+                            guide.toclear += 6
+                            guide.clear()
                         else:
                             for maplist in setting:
                                 setInDict(project.workflowsDict,[workflow]+maplist+[tool,"OPTIONS"],{})
