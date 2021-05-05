@@ -471,7 +471,7 @@ def add_sample_dirs():
             for dirpath, dirnames, filenames in os.walk(dir):
                 for filename in [f for f in filenames if f.endswith(".fastq.gz")]:
                     project.samplesDict[os.path.join(dirpath,filename)]= {}
-            path_to_samples_dict[dir] = f"{len(project.samplesDict[dir]) } Files found"
+            path_to_samples_dict[dir] = f"{len(project.samplesDict) } Files found"
             guide.clear(len(path_to_samples_dict)+3)
             er = 0
             continue
